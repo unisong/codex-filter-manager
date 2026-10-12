@@ -166,7 +166,7 @@ test('removes nested encrypted content from agent and tool messages without chan
   assert.equal(JSON.stringify(body), snapshot);
 });
 
-test('Lanln provider proxy path removes nested encrypted content before forwarding', async t => {
+test('explicit provider filter removes nested encrypted content before forwarding', async t => {
   let received;
   const upstream = http.createServer(async (req, res) => {
     const chunks = [];
@@ -177,12 +177,12 @@ test('Lanln provider proxy path removes nested encrypted content before forwardi
   });
   const upstreamOrigin = await listen(upstream);
   const proxy = makeProxy({getUpstream: () => upstreamOrigin,
-    getFilterPolicy: () => ({filter: true, mode: 'filtering', provider: 'venlacy.com'})});
+    getFilterPolicy: () => ({filter: true, mode: 'filtering', provider: 'provider.example'})});
   const origin = await listen(proxy);
   t.after(async () => { await close(proxy); await close(upstream); });
   const body = {model: 'mock-model', stream: true, input: [
     {type: 'agent_message', id: 'amsg_old', content: [
-      {type: 'input_text', text: 'Lanln history'},
+      {type: 'input_text', text: 'Provider history'},
       {type: 'encrypted_content', encrypted_content: 'foreign-ciphertext'}
     ]},
     {type: 'custom_tool_call', id: 'ctc_old', call_id: 'call_keep', name: 'exec', input: {
@@ -192,7 +192,7 @@ test('Lanln provider proxy path removes nested encrypted content before forwardi
   const response = await call(origin, '/responses', {body: JSON.stringify(body)});
   assert.equal(response.status, 200);
   assert.deepEqual(received.input, [
-    {type: 'agent_message', content: [{type: 'input_text', text: 'Lanln history'}]},
+    {type: 'agent_message', content: [{type: 'input_text', text: 'Provider history'}]},
     {type: 'custom_tool_call', call_id: 'call_keep', name: 'exec', input: {
       content: [{type: 'input_text', text: 'keep'}]
     }}
@@ -212,7 +212,7 @@ test('preserved include is copied verbatim; a missing or empty include is never 
     assert.deepEqual(kept, {...request, store: false});
     assert.equal(Object.hasOwn(kept, 'include'), Object.hasOwn(request, 'include'));
   }
-  // AgentRouter keeps the older behavior: the encrypted include is removed, both explicitly and by default.
+  // When enabled without preservation, filtering removes the encrypted include.
   assert.deepEqual(filterResponsesRequest({include: preserved}, {}).body.include, ['message.output_text.logprobs']);
   assert.deepEqual(filterResponsesRequest({include: preserved}).body.include, ['message.output_text.logprobs']);
 });
@@ -291,7 +291,7 @@ test('HTTP filtering handles all compressed forms and preserves authorization, p
   const health = JSON.parse((await call(origin, ADMIN + '/health', {method: 'GET'})).body);
   assert.equal(health.stats.filteredRequests, 7);
   assert.equal(health.stats.removedReasoningItems, 7);
-  assert.equal(health.filterVersion, 20);
+  assert.equal(health.filterVersion, 21);
   assert.equal(health.stats.removedItemIds, 35);
   assert.equal(health.stats.upstreamHttpErrors, 5);
   assert.equal(health.stats.lastUpstreamStatus, 200);
@@ -516,19 +516,20 @@ function mockDatabase(t) {
   const filename = path.join(fixture(t), 'mock.db');
   db = new DatabaseSync(filename);
   db.exec("CREATE TABLE proxy_config(app_type TEXT, auto_failover_enabled INTEGER); INSERT INTO proxy_config VALUES ('codex', 0); CREATE TABLE providers(app_type TEXT, is_current INTEGER, settings_config TEXT, id TEXT DEFAULT 'mock-provider');");
-  const select = (url, extra = '') => {
+  const select = (url, extra = '', id = 'mock-provider') => {
     db.exec('DELETE FROM providers');
     const config = 'model_provider = "actual"\n[model_providers.actual]\nbase_url = ' + JSON.stringify(url) + '\n' + extra;
-    db.prepare('INSERT INTO providers(app_type, is_current, settings_config) VALUES (?, 1, ?)').run('codex', JSON.stringify({config, auth: {OPENAI_API_KEY: 'mock-never-output'}}));
+    db.prepare('INSERT INTO providers(app_type, is_current, settings_config, id) VALUES (?, 1, ?, ?)').run('codex', JSON.stringify({config, auth: {OPENAI_API_KEY: 'mock-never-output'}}), id);
   };
   return {db, filename, select};
 }
 
-test('read-only database policy follows current actual URL, rejects lookalikes and unknown/failover', t => {
+test('fresh installations have no built-in domain or header rules, including formerly configured hosts', t => {
   const {db, filename, select} = mockDatabase(t);
   for (const url of ['https://agentrouter.org/v1', 'https://api.agentrouter.org/v1', 'https://ANYROUTER.TOP', 'https://a.b.anyrouter.top', 'https://ai.apizn.com/v1', 'https://api.apizn.com', 'https://ps.air-outer.com/v1', 'https://air-outer.com', 'https://api.ark717.com/', 'https://ark717.com/v1', 'https://venlacy.com/v1', 'https://ai.venlacy.com/v1', 'https://AI.VENLACY.COM/v1']) {
     select(url);
-    assert.equal(readFilterPolicy(filename).filter, true, url);
+    assert.equal(readFilterPolicy(filename).filter, false, url);
+    assert.equal(readFilterPolicy(filename).stripResponsesLiteHeader, undefined, url);
   }
   for (const url of ['https://agentrouter.org.evil.test', 'https://evilagentrouter.org', 'https://anyrouter.top.evil', 'https://-bad.anyrouter.top', 'https://bad_.agentrouter.org', 'https://apizn.com.evil.test', 'https://air-outer.com.evil.test', 'https://evilair-outer.com', 'https://ark717.com.evil.test', 'https://evilark717.com', 'https://api.ark7171.com', 'https://venlacy.com.evil.test', 'https://evilvenlacy.com', 'https://ai.venlacy1.com', 'https://api.openai.com', 'http://127.0.0.1:15721', 'https://127.0.0.1:18190', 'http://127.0.0.1:18191', 'http://localhost:18190', 'not-a-url']) {
     select(url);
@@ -594,12 +595,12 @@ test('user-enabled filter removes historical ciphertext but preserves agent text
     content: [{type: 'input_text', text: 'History to keep'}]});
 });
 
-test('HUB compatibility matches its verified origin without enabling history filtering', t => {
+test('header compatibility is opt-in for each provider, regardless of origin', t => {
   const {db, filename, select} = mockDatabase(t);
   for (const url of ['https://hub.oaifree.com', 'https://HUB.OAIFREE.COM/v1', 'https://hub.oaifree.com:443/v1']) {
     select(url);
-    assert.deepEqual(readFilterPolicy(filename), {filter: false, mode: 'compatibility',
-      reason: 'hub-responses-lite-header', provider: 'hub.oaifree.com', stripResponsesLiteHeader: true});
+    assert.equal(readFilterPolicy(filename).filter, false);
+    assert.equal(readFilterPolicy(filename).stripResponsesLiteHeader, undefined);
   }
   for (const url of ['http://hub.oaifree.com', 'https://hub.oaifree.com:8443', 'https://oaifree.com',
     'https://api.hub.oaifree.com', 'https://hub.oaifree.com.evil.test', 'https://evilhub.oaifree.com']) {
@@ -609,13 +610,17 @@ test('HUB compatibility matches its verified origin without enabling history fil
     assert.equal(policy.stripResponsesLiteHeader, undefined);
   }
   select('https://hub.oaifree.com');
+  const overrides = {'mock-provider': {historyFilter: false, preserveEncryptedInclude: true, stripResponsesLiteHeader: true}};
+  assert.deepEqual(readFilterPolicy(filename, overrides), {filter: false, mode: 'compatibility',
+    reason: 'user-override', provider: 'hub.oaifree.com', preserveEncryptedInclude: true, stripResponsesLiteHeader: true});
   db.exec('UPDATE proxy_config SET auto_failover_enabled = 1');
-  assert.equal(readFilterPolicy(filename).stripResponsesLiteHeader, undefined);
+  assert.equal(readFilterPolicy(filename, overrides).stripResponsesLiteHeader, undefined);
 });
 
-test('HUB Lite 400 is repaired for compressed Responses without discarding history or effort', async t => {
+test('user-enabled header compatibility repairs Lite 400 without discarding history or effort', async t => {
   const {filename, select} = mockDatabase(t);
-  select('https://hub.oaifree.com');
+  select('https://header.example');
+  const overrides = {'mock-provider': {historyFilter: false, preserveEncryptedInclude: true, stripResponsesLiteHeader: true}};
   let received;
   const upstream = http.createServer(async (req, res) => {
     const chunks = [];
@@ -623,8 +628,7 @@ test('HUB Lite 400 is repaired for compressed Responses without discarding histo
     const raw = Buffer.concat(chunks);
     const body = JSON.parse(decodeBody(raw, req.headers['content-encoding'], 65536));
     received = {raw, body, headers: req.headers, path: req.url};
-    // Real HUB A/B failed even with all_turns supplied. Emulate its downstream
-    // losing that field while forwarding the private Lite opt-in header.
+    // Emulate a downstream that rejects the private Lite opt-in header.
     const invalid = !!req.headers['x-openai-internal-codex-responses-lite'];
     res.writeHead(invalid ? 400 : 200, {'content-type': invalid ? 'application/json' : 'text/event-stream'});
     res.end(invalid ? JSON.stringify({error: {message:
@@ -633,7 +637,7 @@ test('HUB Lite 400 is repaired for compressed Responses without discarding histo
   });
   const upstreamOrigin = await listen(upstream);
   const events = [];
-  const proxy = makeProxy({getUpstream: () => upstreamOrigin, getFilterPolicy: () => readFilterPolicy(filename),
+  const proxy = makeProxy({getUpstream: () => upstreamOrigin, getFilterPolicy: () => readFilterPolicy(filename, overrides),
     log: (event, data) => events.push({event, data})});
   const origin = await listen(proxy);
   t.after(async () => { await close(proxy); await close(upstream); });
@@ -697,8 +701,9 @@ test('HUB Lite 400 is repaired for compressed Responses without discarding histo
   }
 });
 
-test('HUB header cleanup preserves opaque bodies and leaves other endpoints/providers/failover untouched', async t => {
+test('user-enabled header cleanup preserves opaque bodies and leaves other endpoints/providers/failover untouched', async t => {
   const {db, filename, select} = mockDatabase(t);
+  const overrides = {'mock-provider': {historyFilter: false, preserveEncryptedInclude: true, stripResponsesLiteHeader: true}};
   let received;
   const upstream = http.createServer(async (req, res) => {
     const chunks = [];
@@ -708,12 +713,12 @@ test('HUB header cleanup preserves opaque bodies and leaves other endpoints/prov
     res.end('{}');
   });
   const upstreamOrigin = await listen(upstream);
-  const proxy = makeProxy({getUpstream: () => upstreamOrigin, getFilterPolicy: () => readFilterPolicy(filename)});
+  const proxy = makeProxy({getUpstream: () => upstreamOrigin, getFilterPolicy: () => readFilterPolicy(filename, overrides)});
   const origin = await listen(proxy);
   t.after(async () => { await close(proxy); await close(upstream); });
   const raw = Buffer.from('opaque-not-json');
   const headers = {'x-openai-internal-codex-responses-lite': 'true', 'content-encoding': 'unknown'};
-  select('https://hub.oaifree.com');
+  select('https://header.example');
   assert.equal((await call(origin, '/responses', {body: raw, headers})).status, 200);
   assert.deepEqual(received.raw, raw);
   assert.equal(received.encoding, 'unknown');
@@ -725,7 +730,7 @@ test('HUB header cleanup preserves opaque bodies and leaves other endpoints/prov
     assert.equal(received.lite, 'true');
   }
   for (const mode of ['other', 'unknown', 'failover']) {
-    select(mode === 'other' ? 'https://example.com' : 'https://hub.oaifree.com');
+    select('https://header.example', '', mode === 'other' ? 'unconfigured-provider' : 'mock-provider');
     if (mode === 'unknown') db.exec('UPDATE providers SET is_current = 0');
     db.exec('UPDATE proxy_config SET auto_failover_enabled = ' + (mode === 'failover' ? 1 : 0));
     assert.equal((await call(origin, '/responses', {body: raw, headers})).status, 200);
@@ -738,7 +743,7 @@ test('HUB header cleanup preserves opaque bodies and leaves other endpoints/prov
   assert.equal(health.stats.blockedRequests, 0);
 });
 
-test('HUB header cleanup is cancelled when the routing policy changes during upload', async t => {
+test('header cleanup is cancelled when the routing policy changes during upload', async t => {
   let reads = 0, received;
   const upstream = http.createServer(async (req, res) => {
     const chunks = [];
@@ -750,7 +755,7 @@ test('HUB header cleanup is cancelled when the routing policy changes during upl
   const upstreamOrigin = await listen(upstream);
   const proxy = makeProxy({getUpstream: () => upstreamOrigin, getFilterPolicy: () => {
     reads++;
-    return reads === 1 ? {filter: false, provider: 'hub.oaifree.com', stripResponsesLiteHeader: true}
+    return reads === 1 ? {filter: false, provider: 'header.example', stripResponsesLiteHeader: true}
       : {filter: false, reason: 'other-provider'};
   }});
   const origin = await listen(proxy);
@@ -769,6 +774,10 @@ test('HUB header cleanup is cancelled when the routing policy changes during upl
 
 test('provider switches per request; non-target, unknown and failover pass compressed references/compaction byte-for-byte', async t => {
   const {db, filename, select} = mockDatabase(t);
+  const overrides = {
+    'remove-include': {historyFilter: true, preserveEncryptedInclude: false, stripResponsesLiteHeader: false},
+    'keep-include': {historyFilter: true, preserveEncryptedInclude: true, stripResponsesLiteHeader: false}
+  };
   let received, policyReads = 0;
   const upstream = http.createServer(async (req, res) => {
     const chunks = [];
@@ -777,22 +786,23 @@ test('provider switches per request; non-target, unknown and failover pass compr
     res.end('{}');
   });
   const upstreamOrigin = await listen(upstream);
-  const proxy = makeProxy({getUpstream: () => upstreamOrigin, getFilterPolicy: () => { policyReads++; return readFilterPolicy(filename); }});
+  const proxy = makeProxy({getUpstream: () => upstreamOrigin, getFilterPolicy: () => { policyReads++; return readFilterPolicy(filename, overrides); }});
   const origin = await listen(proxy);
   t.after(async () => { await close(proxy); await close(upstream); });
-  for (const url of ['https://agentrouter.org', 'https://ai.venlacy.com/v1', 'https://api.openai.com', 'https://anyrouter.top', 'invalid']) {
-    select(url);
+  for (const [url, id] of [['https://filter.example', 'remove-include'], ['https://second.example/v1', 'remove-include'],
+    ['https://unconfigured.example', 'unconfigured'], ['https://preserve.example', 'keep-include'], ['invalid', 'remove-include']]) {
+    select(url, '', id);
     const raw = Buffer.from(JSON.stringify(sample, null, 2));
     const before = policyReads;
     assert.equal((await call(origin, '/responses', {body: raw})).status, 200);
-    assert.equal(policyReads, before + (readFilterPolicy(filename).filter ? 2 : 1));
-  const policy = readFilterPolicy(filename);
-  if (policy.filter) assert.deepEqual(JSON.parse(received.body), filterResponsesRequest(sample, {preserveEncryptedInclude: policy.provider === 'anyrouter.top'}).body);
+    const policy = readFilterPolicy(filename, overrides);
+    assert.equal(policyReads, before + (policy.filter ? 2 : 1));
+    if (policy.filter) assert.deepEqual(JSON.parse(received.body), filterResponsesRequest(sample, {preserveEncryptedInclude: policy.preserveEncryptedInclude}).body);
     else assert.deepEqual(received.body, raw);
   }
   const raw = Buffer.from(JSON.stringify({...sample, previous_response_id: 'resp', conversation: 'conv', context_management: [{type: 'compaction'}], input: [...sample.input, {type: 'item_reference', id: 'keep'}, {type: 'compaction', encrypted_content: 'keep'}]}, null, 2));
   for (const mode of ['other', 'unknown', 'failover']) {
-    select(mode === 'other' ? 'https://example.com' : 'https://agentrouter.org');
+    select('https://filter.example', '', mode === 'other' ? 'unconfigured' : 'remove-include');
     if (mode === 'unknown') db.exec('UPDATE providers SET is_current = 0');
     db.exec('UPDATE proxy_config SET auto_failover_enabled = ' + (mode === 'failover' ? 1 : 0));
     for (const [encoding, body] of [['identity', raw], ['gzip', zlib.gzipSync(raw)], ['deflate', zlib.deflateSync(raw)], ['br', zlib.brotliCompressSync(raw)], ['zstd', zlib.zstdCompressSync(raw)], ['unknown', Buffer.from('not-json')]]) {
@@ -807,10 +817,14 @@ test('provider switches per request; non-target, unknown and failover pass compr
   assert.equal(health.policy.mode, 'passthrough');
   assert.equal(health.policy.reason, 'auto-failover-or-unknown');
   assert.equal(health.stats.filteredRequests, 3);
-  assert.equal(health.filterVersion, 20);
+  assert.equal(health.filterVersion, 21);
 });
-test('HTTP AnyRouter keeps include for a strict endpoint; AgentRouter and other providers are unchanged', async t => {
+test('explicit include preservation applies only to configured provider IDs', async t => {
   const {db, filename, select} = mockDatabase(t);
+  const overrides = {
+    'remove-include': {historyFilter: true, preserveEncryptedInclude: false, stripResponsesLiteHeader: false},
+    'keep-include': {historyFilter: true, preserveEncryptedInclude: true, stripResponsesLiteHeader: false}
+  };
   let received;
   const upstream = http.createServer(async (req, res) => {
     const chunks = [];
@@ -819,21 +833,21 @@ test('HTTP AnyRouter keeps include for a strict endpoint; AgentRouter and other 
     let body = null;
     try { body = JSON.parse(raw.toString('utf8')); } catch {}
     received = {raw, body};
-    // Strict AnyRouter mock: anything that does not ask for encrypted reasoning output is rejected.
+    // A strict endpoint rejects requests that do not ask for encrypted reasoning output.
     const keepsInclude = Array.isArray(body?.include) && body.include.includes('reasoning.encrypted_content');
     res.writeHead(keepsInclude ? 200 : 400, {'content-type': 'application/json'});
     res.end(JSON.stringify(keepsInclude ? {keepsInclude} : {error: {type: 'invalid_request_error', message: 'invalid codex request'}}));
   });
   const upstreamOrigin = await listen(upstream);
-  const proxy = makeProxy({getUpstream: () => upstreamOrigin, getFilterPolicy: () => readFilterPolicy(filename)});
+  const proxy = makeProxy({getUpstream: () => upstreamOrigin, getFilterPolicy: () => readFilterPolicy(filename, overrides)});
   const origin = await listen(proxy);
   t.after(async () => { await close(proxy); await close(upstream); });
   const raw = Buffer.from(JSON.stringify(sample));
-  select('https://agentrouter.org');
+  select('https://strict.example', '', 'remove-include');
   assert.equal((await call(origin, '/responses', {body: raw})).status, 400);
   assert.deepEqual(received.body, filterResponsesRequest(sample).body);
   assert.deepEqual(received.body.include, ['message.output_text.logprobs']);
-  select('https://anyrouter.top');
+  select('https://strict.example', '', 'keep-include');
   assert.equal((await call(origin, '/responses', {body: raw})).status, 200);
   assert.deepEqual(received.body, filterResponsesRequest(sample, {preserveEncryptedInclude: true}).body);
   assert.deepEqual(received.body.include, sample.include);
@@ -842,11 +856,11 @@ test('HTTP AnyRouter keeps include for a strict endpoint; AgentRouter and other 
   assert.equal(received.body.input.some(item => item.type === 'reasoning'), false);
   assert.equal(received.body.input.some(item => item.id !== undefined), false);
   assert.equal(received.body.input[1].call_id, received.body.input[2].call_id);
-  select('https://api.openai.com');
+  select('https://strict.example', '', 'unconfigured');
   assert.equal((await call(origin, '/responses', {body: raw})).status, 200);
   assert.deepEqual(received.raw, raw);
   const health = JSON.parse((await call(origin, ADMIN + '/health', {method: 'GET'})).body);
-  assert.equal(health.filterVersion, 20);
+  assert.equal(health.filterVersion, 21);
   assert.equal(health.stats.filteredRequests, 2);
   assert.equal(health.stats.removedReasoningItems, 2);
   assert.equal(health.stats.removedItemIds, 10);

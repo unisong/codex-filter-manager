@@ -93,14 +93,7 @@ function discoverCcSwitch(databasePath = path.join(os.homedir(), '.cc-switch', '
   } finally { db.close(); }
 }
 
-// One read-only snapshot per request. Project only config TOML, never auth/API-key fields.
-// Filter only these upstream base-url root domains (matched with their subdomains).
-// 智纽-Codex uses https://ai.apizn.com/v1, so its root domain apizn.com is listed.
-// AgentRouter's domestic backup endpoint uses https://ps.air-outer.com/v1, so air-outer.com is listed.
-// CC Switch「打野」 uses https://api.ark717.com/, so its root domain ark717.com is listed.
-// CC Switch「Lanln公益站-Codex」 uses https://ai.venlacy.com/v1.
-const FILTERED_DOMAINS = ['agentrouter.org', 'anyrouter.top', 'apizn.com', 'air-outer.com', 'ark717.com', 'venlacy.com'];
-
+// Providers are passthrough until the user saves an explicit local rule.
 function providerPolicy(config, override) {
   const pass = reason => ({filter: false, mode: 'passthrough', reason, provider: 'unknown'});
   try {
@@ -121,19 +114,11 @@ function providerPolicy(config, override) {
     const host = url.hostname.toLowerCase();
     // Require valid DNS labels as well as a dot boundary (not suffix lookalikes).
     if (host.length > 253 || !host.split('.').every(label => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))) return pass('base-url-unidentified');
-    // HUB rejects Codex Lite even when reasoning.context is already all_turns.
-    // Standard Responses succeeds; only remove the private Lite opt-in header.
-    // Match only the verified HTTPS origin, not other oaifree.com services.
-    if (url.origin === 'https://hub.oaifree.com') {
-      return {filter: false, mode: 'compatibility', reason: 'hub-responses-lite-header',
-        provider: 'hub.oaifree.com', stripResponsesLiteHeader: true};
-    }
-    const domain = FILTERED_DOMAINS.find(root => host === root || host.endsWith('.' + root));
-    if (!domain) return pass('other-provider');
-    return {filter: true, mode: 'filtering', reason: 'matched-base-url', provider: domain};
+    return pass('not-configured');
   } catch { return pass('base-url-unidentified'); }
 }
 
+// One read-only snapshot per request. Project only config TOML, never auth/API-key fields.
 function readFilterPolicy(databasePath = path.join(os.homedir(), '.cc-switch', 'cc-switch.db'), overrides = {}) {
   const pass = reason => ({filter: false, mode: 'passthrough', reason, provider: 'unknown'});
   if (!fs.existsSync(databasePath)) return pass('database-missing');

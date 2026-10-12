@@ -4,7 +4,7 @@ const http = require('node:http');
 const zlib = require('node:zlib');
 const {timingSafeEqual} = require('node:crypto');
 const {collectResponse} = require('./guard-transport.cjs');
-const FILTER_VERSION = 20;
+const FILTER_VERSION = 21;
 const SERVICE = 'ccswitch-codex-reasoning-filter-v1';
 const ADMIN = '/__codex_filter__';
 const LIMIT = 64 * 1024 * 1024;
@@ -292,7 +292,7 @@ function makeProxy({getUpstream, token, dashboard, guard, onStop = () => {}, get
             stats.lastLiteHeaderStrippedAt = new Date().toISOString();
             log('lite-header-stripped', {provider: policy.provider || 'unknown'});
           }
-          // HUB compatibility changes only headers, not body fields or encoding.
+          // Header compatibility changes neither body fields nor encoding.
           if (policy.filter !== true) {
             body = original;
           } else {
@@ -301,7 +301,7 @@ function makeProxy({getUpstream, token, dashboard, guard, onStop = () => {}, get
             try { input = JSON.parse(raw.toString('utf8')); }
             catch { throw new FilterError('invalid_request_json', 'Responses request is not valid JSON.'); }
             const filtered = filterResponsesRequest(input, {
-              preserveEncryptedInclude: policy.preserveEncryptedInclude ?? (policy.provider === 'anyrouter.top')
+              preserveEncryptedInclude: policy.preserveEncryptedInclude === true
             });
             stats.filteredRequests++;
             stats.removedReasoningItems += filtered.removed;

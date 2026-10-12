@@ -94,6 +94,9 @@ with sync_playwright() as p:
     expect(page.locator("#providersView")).to_have_attribute("role", "tabpanel")
     expect(page.locator("#currentHistoryEnabled")).to_be_visible()
     expect(page.locator("#guardEnabled")).to_be_visible()
+    expect(page.locator("#currentHistoryEnabled")).to_have_attribute("aria-checked", "false")
+    expect(page.locator("#guardEnabled")).to_have_attribute("aria-checked", "false")
+    assert not any(call[0] != "GET" for call in calls), "Loading the UI must not enable settings or run probes"
     before_navigation_writes = len([call for call in calls if call[0] != "GET"])
     page.locator("#viewProviders").focus()
     page.keyboard.press("ArrowRight")

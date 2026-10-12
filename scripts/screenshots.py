@@ -1,5 +1,6 @@
 """Generate documentation screenshots using synthetic providers, never live state."""
 from pathlib import Path
+from copy import deepcopy
 from datetime import datetime, timezone, timedelta
 import json
 import os
@@ -26,6 +27,12 @@ state = {'providers': providers, 'revision': 'demo-revision', 'currentPolicy': {
     'aliasCompatibility': {'configured': False, 'enabled': False, 'activeCount': 0},
     'filter': {'filterVersion': version, 'state': 'filtering', 'stats': {'filteredRequests': 128, 'removedEncryptedContentItems': 436}},
     'guard': {'models': ['gpt-6-astra', 'gpt-6-sol'], 'providers': {'demo-main': {'enabled': True, 'ttlSeconds': 1800}}, 'settingsRevision': 'demo-guard', 'records': [record], 'history': history, 'historyLimit': 100, 'current': {'providerId': 'demo-main', 'model': record['model'], 'effort': record['effort'], 'available': True, 'key': record['key']}}}
+configured_state = deepcopy(state)
+for provider in state['providers']:
+    provider.update(source='default', rule=deepcopy(off))
+state['currentPolicy'] = {'filter': False}
+state['filter']['stats'] = {'filteredRequests': 0, 'removedEncryptedContentItems': 0}
+state['guard'].update(providers={}, records=[], history=[])
 with sync_playwright() as p:
     browser = p.chromium.launch(headless=True, **({'executable_path': os.environ['CHROME_PATH']} if os.environ.get('CHROME_PATH') else {}))
     page = browser.new_page(viewport={'width': 1440, 'height': 1180}, timezone_id='Asia/Shanghai', device_scale_factor=1)
@@ -48,6 +55,13 @@ with sync_playwright() as p:
     expect(page.locator('#current')).to_have_text(providers[0]['name'])
     expect(page.locator('a.github-link')).to_have_count(2)
     for view in ['providers', 'protection', 'history']:
+        if view == 'protection':
+            state = configured_state
+            page.locator('#refresh').click()
+            expect(page.locator('#guardEnabled')).to_have_attribute('aria-checked', 'true')
+        elif view == 'providers':
+            expect(page.locator('#currentHistoryEnabled')).to_have_attribute('aria-checked', 'false')
+            expect(page.locator('#guardEnabled')).to_have_attribute('aria-checked', 'false')
         page.locator('[data-view="' + view + '"]').click()
         page.evaluate('window.scrollTo(0,0)')
         page.screenshot(path=str(output / (view + '.png')))

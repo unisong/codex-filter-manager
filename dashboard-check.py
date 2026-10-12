@@ -16,7 +16,7 @@ const {createManagement}=require('./management.cjs');
 const runtime=process.argv[1],databasePath=path.join(runtime,'mock.db');
 const db=new DatabaseSync(databasePath);
 db.exec("PRAGMA user_version=19; CREATE TABLE providers(id TEXT,name TEXT,app_type TEXT,is_current INTEGER,settings_config TEXT,sort_index INTEGER); CREATE TABLE proxy_config(app_type TEXT,auto_failover_enabled INTEGER); INSERT INTO proxy_config VALUES('codex',0)");
-const providers=[['gugu','演示供应商-Codex','https://gugu.example',1],['ugq','备用供应商-Codex','https://backup.example',0],['agent','Agent Router','https://agentrouter.org',0],['hub','HUB站','https://hub.oaifree.com',0],['unsafe','<img src=x onerror=alert(1)>','https://example.com',0]];
+const providers=[['gugu','演示供应商-Codex','https://gugu.example',1],['ugq','备用供应商-Codex','https://backup.example',0],['agent','团队供应商','https://team.example',0],['hub','测试供应商','https://test.example',0],['unsafe','<img src=x onerror=alert(1)>','https://example.com',0]];
 for(const [id,name,url,current] of providers) db.prepare('INSERT INTO providers VALUES(?,?,?,?,?,0)').run(id,name,'codex',current,JSON.stringify({config:'model_provider="custom"\n[model_providers.custom]\nbase_url='+JSON.stringify(url)}));
 db.close();
 fs.writeFileSync(path.join(runtime,'legacy-model-aliases.json'),JSON.stringify({enabled:true,databaseVersion:19,aliases:[['ccs-old/gpt-6-astra','gpt-6-astra']]}));
@@ -46,6 +46,9 @@ with tempfile.TemporaryDirectory(prefix='codex-filter-ui-') as scratch:
             expect(page.locator('#viewHistory')).to_be_hidden()
             expect(page.locator('#guardEnabled')).to_be_hidden()
             expect(page.locator('#currentHistoryEnabled')).to_have_attribute('aria-checked', 'false')
+            expect(page.locator('#providers .rule-label')).to_have_text(['原样转发'] * 5)
+            expect(page.locator('#providers .rule-source')).to_have_text(['默认直通'] * 5)
+            assert not (Path(scratch) / 'provider-rules.json').exists()
             assert page.locator('#error').is_hidden()
             assert page.locator('#current').inner_text() == '演示供应商-Codex'
             assert page.locator('#providers img').count() == 0
@@ -69,7 +72,8 @@ with tempfile.TemporaryDirectory(prefix='codex-filter-ui-') as scratch:
             page.get_by_role('button', name='配置', exact=True).click()
             page.get_by_role('button', name='恢复默认', exact=True).click()
             expect(page.locator('#drawer')).to_be_hidden()
-            expect(page.locator('#providers .rule-source')).to_have_text('默认规则')
+            expect(page.locator('#providers .rule-source')).to_have_text('默认直通')
+            expect(page.locator('#currentHistoryEnabled')).to_have_attribute('aria-checked', 'false')
             assert 'gugu' not in json.loads(rules_path.read_text())['providers']
             page.locator('#currentHistoryEnabled').click()
             expect(page.locator('#currentHistoryEnabled')).to_have_attribute('aria-checked', 'true')
@@ -82,7 +86,8 @@ with tempfile.TemporaryDirectory(prefix='codex-filter-ui-') as scratch:
             expect(page.get_by_role('switch', name='旧模型名称兼容', exact=True)).to_have_attribute('aria-checked','false')
             page.get_by_role('searchbox', name='搜索供应商').fill('')
             page.get_by_role('button', name='已启用', exact=True).click()
-            assert page.locator('#providers tr').count() == 2
+            expect(page.locator('#providers tr')).to_have_count(0)
+            expect(page.locator('#empty')).to_be_visible()
             page.get_by_role('button', name='全部', exact=True).click()
             output = root / '.runtime'
             output.mkdir(exist_ok=True)

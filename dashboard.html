@@ -62,7 +62,7 @@ th:first-child{width:37%}th:nth-child(2){width:18%}th:nth-child(3){width:16%}th:
   </div>
   <div class="view-panel" id="providersView" role="tabpanel" aria-labelledby="viewProviders" tabindex="0">
   <section class="panel" aria-label="供应商规则">
-   <div class="panel-head"><div><h2>供应商规则</h2><p class="subtitle">开启历史过滤，即可加入兼容处理；关闭即停止该项处理。</p></div><input class="search" id="search" type="search" placeholder="搜索名称或地址…" aria-label="搜索供应商"></div>
+   <div class="panel-head"><div><h2>供应商规则</h2><p class="subtitle">不预置供应商规则；历史过滤、Lite 兼容与模型保护默认关闭，按需开启。</p></div><input class="search" id="search" type="search" placeholder="搜索名称或地址…" aria-label="搜索供应商"></div>
    <div class="toolbar"><div class="tabs" aria-label="供应商筛选"><button class="tab active" data-tab="all" aria-pressed="true">全部</button><button class="tab" data-tab="enabled" aria-pressed="false">已启用</button><button class="tab" data-tab="custom" aria-pressed="false">自定义</button></div><span class="count" id="count">加载中</span></div>
    <div class="table-wrap"><table><thead><tr><th>供应商 / 地址</th><th>兼容规则</th><th>历史过滤</th><th id="guardColumn">模型保护</th><th>操作</th></tr></thead><tbody id="providers"></tbody></table><div class="empty" id="empty" hidden>没有匹配的供应商</div></div>
   </section>
@@ -75,8 +75,8 @@ th:first-child{width:37%}th:nth-child(2){width:18%}th:nth-child(3){width:16%}th:
  <div class="drawer-head"><span class="eyebrow">PROVIDER SETTINGS</span><button class="button small" id="closeDrawer" aria-label="关闭设置">✕</button></div>
  <h2 class="drawer-title" id="drawerTitle"></h2><p class="endpoint" id="drawerEndpoint"></p><div class="settings">
   <label class="setting"><input id="historyFilter" type="checkbox"><span><strong>过滤历史加密内容</strong><small>处理切换供应商后的解密失败。保留可读消息、工具结果和调用配对；移除旧加密推理状态与历史密文块。</small></span></label>
-  <label class="setting"><input id="preserveEncryptedInclude" type="checkbox"><span><strong>保留新响应的加密内容请求</strong><small>建议开启。AnyRouter、UGQAI 等上游需要此选项。它不会保留已经过滤的旧密文。</small></span></label>
-  <label class="setting"><input id="stripResponsesLiteHeader" type="checkbox"><span><strong>HUB / Lite 协议兼容</strong><small>仅在上游提示 Lite 与 reasoning.context 不兼容时开启，或沿用 HUB 的默认规则。</small></span></label>
+  <label class="setting"><input id="preserveEncryptedInclude" type="checkbox"><span><strong>保留新响应的加密内容请求</strong><small>仅在历史过滤开启时生效。保留客户端对新响应密文的请求，不会保留已经过滤的旧密文。</small></span></label>
+  <label class="setting"><input id="stripResponsesLiteHeader" type="checkbox"><span><strong>Lite 协议兼容</strong><small>默认关闭。仅在上游提示 Lite 与 reasoning.context 不兼容时按需开启。</small></span></label>
  </div><div class="help">历史过滤无法迁移模型之前的内部推理状态。只有密文的压缩摘要会明确报错，避免静默丢失历史。原会话文件不会被修改。</div>
  <div class="actions"><button class="button primary" id="saveRule">保存设置</button><button class="button" id="disableRule">关闭全部兼容</button><button class="button" id="resetRule">恢复默认</button></div><p class="endpoint" style="margin-top:14px" id="drawerSource"></p>
  <section id="drawerGuard" class="guard-records"><h3>独立的模型保护设置</h3><label class="setting"><input id="drawerGuardEnabled" type="checkbox"><span><strong>开启降智检测与切断保护</strong><small>每次检测产生 3–6 次上游计费请求。保护期间会暂存完整响应，通过检查后再送达项目；不支持或无法验证的模型将被拦截。</small></span></label><div class="guard-options"><label for="drawerGuardTtl">检测间隔 <select id="drawerGuardTtl"><option value="0">每次请求</option><option value="60">1 分钟</option><option value="300">5 分钟</option><option value="600">10 分钟（默认）</option><option value="1800">30 分钟</option><option value="3600">60 分钟</option></select></label></div><p class="guard-detail" id="drawerGuardStatus" style="margin-top:12px"></p><div class="actions"><button class="button primary" id="saveGuard">保存模型保护</button></div><p class="guard-config-note" style="margin-top:10px">与历史过滤分别保存。恢复兼容默认规则不会更改模型保护。</p></section>
@@ -245,7 +245,7 @@ function renderRows() {
  for (const p of providers) {
   const tr = element('tr'); if (p.id === selectedId) tr.className = 'selected';
   const td = element('td'), name = element('div', null, 'provider-name'); name.append(element('span', p.name)); if (p.current) name.append(element('span','当前','pill green')); td.append(name, element('div',p.endpoint || '地址未配置 / 官方登录','endpoint'));
-  const rules = element('td'); rules.append(element('div',p.editable ? mode(p.rule) : '暂不支持配置','rule-label'),element('div',p.source === 'custom' ? '自定义规则' : '默认规则','rule-source'));
+  const rules = element('td'); rules.append(element('div',p.editable ? mode(p.rule) : '暂不支持配置','rule-label'),element('div',p.source === 'custom' ? '自定义规则' : '默认直通','rule-source'));
   const toggleCell = element('td'), toggle = element('button',null,'switch'); toggle.type='button'; toggle.setAttribute('role','switch'); toggle.setAttribute('aria-checked',String(p.rule.historyFilter)); toggle.setAttribute('aria-label',p.name+' 历史过滤'); toggle.disabled = busy || !p.editable; toggle.addEventListener('click',() => changeRule(p.id,{...p.rule,historyFilter:!p.rule.historyFilter},state.revision)); toggleCell.append(toggle,element('span',p.rule.historyFilter ? '开启' : '关闭','switch-label'));
   const guardCell=element('td',null,'guard-cell'), gp=guardPolicy(p.id), guardToggle=element('button',null,'switch'); guardCell.hidden=!state.guard; guardToggle.type='button';guardToggle.setAttribute('role','switch');guardToggle.setAttribute('aria-checked',String(gp.enabled));guardToggle.setAttribute('aria-label',p.name+' 模型保护');guardToggle.disabled=busy||!!state.guard?.error||(!p.editable&&!gp.enabled);guardToggle.addEventListener('click',()=>changeGuard(p.id,{...gp,enabled:!gp.enabled},false,guardRevision));guardCell.append(guardToggle,element('span',gp.enabled?'开启':'关闭','switch-label'));
   const locked=guardRecords(p.id).find(r=>r.status==='blocked'); if(locked)guardCell.append(element('div',gp.enabled?'有模型已锁定':'已关闭 · 保留锁定','rule-source'));
@@ -291,14 +291,14 @@ function changeGuard(id,policy,close=false,revision=state?.guard?.settingsRevisi
 function clearGuard(key) { if(key)return guardAction('/guard/clear','POST',{key},'锁定已清除；下次请求仍须重新检测通过'); }
 async function changeRule(id, rule, revision) {
  if(busy) return; setBusy(true);
- try { state=await api('/providers/'+encodeURIComponent(id)+'/rule',rule===null ? 'DELETE' : 'PUT',{rule,revision}); $('error').hidden=true; closeDrawer(); toast(rule===null ? '已恢复默认规则，下次请求生效' : '设置已保存，下次请求生效'); }
+ try { state=await api('/providers/'+encodeURIComponent(id)+'/rule',rule===null ? 'DELETE' : 'PUT',{rule,revision}); $('error').hidden=true; closeDrawer(); toast(rule===null ? '已恢复默认直通，模型保护设置不变' : '设置已保存，下次请求生效'); }
  catch(e) { toast(e.message,true); }
  finally { setBusy(false); }
 }
 function openDrawer(p) {
  selectedId=p.id; editRevision=state.revision; editGuardRevision=state.guard?.settingsRevision; focusBefore=document.activeElement;
  $('drawerTitle').textContent=p.name; $('drawerEndpoint').textContent=p.endpoint; keys.forEach(k=>$(k).checked=p.rule[k]);
- $('drawerSource').textContent=p.source==='custom' ? '此供应商正在使用你保存的规则。' : '此供应商正在使用内置默认规则。';
+ $('drawerSource').textContent=p.source==='custom' ? '此供应商正在使用你保存的规则。' : '此供应商未设置兼容规则，默认原样转发。模型保护独立设置。';
  $('drawerGuard').hidden=!state.guard; const gp=guardPolicy(p.id); $('drawerGuardEnabled').checked=gp.enabled;selectTtl('drawerGuardTtl',gp.ttlSeconds);$('drawerGuardStatus').textContent=p.current ? '此供应商当前正在使用，可在主页发起手动检测。' : '保存后待切换到此供应商生效；手动检测仅适用于当前供应商。';
  $('drawer').hidden=false; renderRows(); $('closeDrawer').focus();
 }

@@ -50,7 +50,7 @@ function createManagement({databasePath, runtime, guard, log = () => {}}) {
           source: override ? 'custom' : 'default', policy,
           rule: {historyFilter: policy.filter === true,
             preserveEncryptedInclude: override ? override.preserveEncryptedInclude
-              : policy.preserveEncryptedInclude === true || policy.provider === 'anyrouter.top' || !policy.filter,
+              : policy.preserveEncryptedInclude === true || !policy.filter,
             stripResponsesLiteHeader: policy.stripResponsesLiteHeader === true},
           defaultEnabled: inherited.filter === true || inherited.stripResponsesLiteHeader === true};
       })};
