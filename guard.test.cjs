@@ -7,7 +7,7 @@ const os = require('node:os');
 const path = require('node:path');
 const {createHash} = require('node:crypto');
 const {pathToFileURL} = require('node:url');
-const {createGuard, classify} = require('./guard.cjs');
+const {createGuard, classify, FAILURE_COOLDOWN_SECONDS, TIMEOUT_MS} = require('./guard.cjs');
 
 const sample = Array.from({length: 300}, (_, index) => 1 + index).join(',');
 const requested = 'gpt-6-astra', different = 'gpt-6-luna';
@@ -19,7 +19,7 @@ const scoring = (winner = requested, probability = 0.94, expectedProbability = 0
   results: [{model: winner, probability}, {model: winner === requested ? different : requested, probability: expectedProbability}]
 });
 function historicalRecord(record) {
-  const {cacheValid, cacheReason, outcome, ...verdict} = record;
+  const {cacheValid, cacheReason, outcome, cooldownActive, retryAfterSeconds, ...verdict} = record;
   return verdict;
 }
 function setup(t, extras = {}) {
@@ -86,6 +86,126 @@ test('unsupported expected models fail closed without spending probe tokens', as
   const f = setup(t); f.guard.configure('p1', {enabled: true, ttlSeconds: 600});
   await assert.rejects(f.guard.ensure(ctx({model: 'gpt-6.1-sol'})), {code: 'guard_unsupported', status: 409});
   assert.equal(f.count(), 0); assert.equal(f.guard.snapshot().records[0].status, 'unsupported');
+});
+
+test('failed checks reject retry bursts without probes or duplicate history until cooldown expires', async t => {
+  const f = setup(t, {analyze: () => scoring(different, 0.6, 0.3)});
+  f.guard.configure('p1', {enabled: true, ttlSeconds: 1800});
+  await assert.rejects(f.guard.ensure(ctx()), {code: 'guard_unverified'});
+  const initialHistory = f.guard.snapshot().history;
+  await Promise.all(Array.from({length: 20}, () => assert.rejects(f.guard.ensure(ctx()), error => {
+    assert.equal(error.code, 'guard_unverified');
+    assert.equal(error.retryAfterSeconds, FAILURE_COOLDOWN_SECONDS);
+    assert.match(error.message, /冷却中/);
+    assert.match(error.message, /指纹差异不够明确/);
+    return true;
+  })));
+  assert.equal(f.count(), 3);
+  assert.deepEqual(f.guard.snapshot().history, initialHistory);
+  const state = f.guard.snapshot();
+  assert.equal(state.failureCooldownSeconds, FAILURE_COOLDOWN_SECONDS);
+  assert.equal(state.records[0].cooldownActive, true);
+  assert.equal(state.records[0].cacheValid, false);
+  assert.equal(Date.parse(state.records[0].retryAt) - Date.parse(initialHistory[0].checkedAt), FAILURE_COOLDOWN_SECONDS * 1000);
+  assert.equal(state.records[0].retryAfterSeconds, FAILURE_COOLDOWN_SECONDS);
+  f.advance(FAILURE_COOLDOWN_SECONDS * 1000 - 1);
+  await assert.rejects(f.guard.ensure(ctx()), error => error.retryAfterSeconds === 1);
+  assert.equal(f.count(), 3);
+  f.advance(1);
+  await assert.rejects(f.guard.ensure(ctx()), {code: 'guard_unverified'});
+  assert.equal(f.count(), 6); assert.equal(f.guard.snapshot().history.length, 2);
+});
+
+test('manual retry bypasses a failed check cooldown and a successful retry clears it', async t => {
+  let outcome = scoring(different, 0.6, 0.3);
+  const f = setup(t, {analyze: () => outcome});
+  f.guard.configure('p1', {enabled: true, ttlSeconds: 1800});
+  await assert.rejects(f.guard.ensure(ctx()), {code: 'guard_unverified'});
+  await assert.rejects(f.guard.ensure(ctx(), {force: true}), {code: 'guard_unverified'});
+  assert.equal(f.count(), 6);
+  assert.deepEqual(f.guard.snapshot().history.map(record => record.source), ['manual', 'automatic']);
+  outcome = scoring();
+  await f.guard.ensure(ctx(), {force: true});
+  await f.guard.ensure(ctx());
+  assert.equal(f.count(), 9); assert.equal(f.guard.snapshot().records[0].cooldownActive, false);
+  assert.equal(f.guard.snapshot().records[0].cacheValid, true);
+});
+
+test('restart retains only the remaining failure cooldown without refreshing it or restoring trust', async t => {
+  const f = setup(t, {analyze: () => scoring(different, 0.6, 0.3)});
+  f.guard.configure('p1', {enabled: true, ttlSeconds: 1800});
+  await assert.rejects(f.guard.ensure(ctx()), {code: 'guard_unverified'});
+  const history = f.guard.snapshot().history;
+  const elapsedSeconds = Math.floor(FAILURE_COOLDOWN_SECONDS / 2);
+  f.advance(elapsedSeconds * 1000);
+  const restarted = createGuard(f.options);
+  await assert.rejects(restarted.ensure(ctx()), error => error.code === 'guard_unverified'
+    && error.retryAfterSeconds === FAILURE_COOLDOWN_SECONDS - elapsedSeconds);
+  assert.equal(f.count(), 3);
+  assert.deepEqual(restarted.snapshot().history, history);
+  assert.equal(restarted.snapshot().records[0].cacheValid, false);
+  f.advance((FAILURE_COOLDOWN_SECONDS - elapsedSeconds) * 1000);
+  await assert.rejects(restarted.ensure(ctx()), {code: 'guard_unverified'});
+  assert.equal(f.count(), 6); assert.equal(restarted.snapshot().history.length, 2);
+});
+
+test('failure cooldown is scoped to each route/model/effort key and policy changes invalidate it', async t => {
+  const f = setup(t, {analyze: () => scoring(different, 0.6, 0.3)});
+  f.guard.configure('p1', {enabled: true, ttlSeconds: 1800});
+  await assert.rejects(f.guard.ensure(ctx()), {code: 'guard_unverified'});
+  await assert.rejects(f.guard.ensure(ctx({key: 'other-key', effort: 'max'})), {code: 'guard_unverified'});
+  assert.equal(f.count(), 6);
+  f.guard.configure('p1', {enabled: false, ttlSeconds: 1800});
+  assert.deepEqual(await f.guard.ensure(ctx()), {enabled: false});
+  assert.equal(f.count(), 6);
+  f.guard.configure('p1', {enabled: true, ttlSeconds: 1800});
+  await assert.rejects(f.guard.ensure(ctx()), {code: 'guard_unverified'});
+  assert.equal(f.count(), 9);
+  f.guard.invalidate('p1');
+  await assert.rejects(f.guard.ensure(ctx()), {code: 'guard_unverified'});
+  assert.equal(f.count(), 12);
+  f.guard.clear(ctx().key);
+  await assert.rejects(f.guard.ensure(ctx()), {code: 'guard_unverified'});
+  assert.equal(f.count(), 15);
+});
+
+test('unsupported-model retry bursts keep one history entry and manual attempts remain explicit', async t => {
+  const f = setup(t); f.guard.configure('p1', {enabled: true, ttlSeconds: 1800});
+  const unsupported = ctx({model: 'unlisted'});
+  await assert.rejects(f.guard.ensure(unsupported), {code: 'guard_unsupported'});
+  for (let attempt = 0; attempt < 10; attempt++) {
+    await assert.rejects(f.guard.ensure(unsupported), error =>
+      error.code === 'guard_unsupported' && error.retryAfterSeconds === FAILURE_COOLDOWN_SECONDS);
+  }
+  assert.equal(f.count(), 0); assert.equal(f.guard.snapshot().history.length, 1);
+  await assert.rejects(f.guard.ensure(unsupported, {force: true}), {code: 'guard_unsupported'});
+  assert.equal(f.guard.snapshot().history.length, 2);
+  assert.equal(f.guard.snapshot().history[0].source, 'manual');
+});
+
+test('cancelled checks and legacy unverified records never acquire cooldown on restart', async t => {
+  let pending = true;
+  const f = setup(t, {probe: async ({signal}) => {
+    if (pending) await new Promise((resolve, reject) => signal.addEventListener('abort', () => reject(new Error('cancelled')), {once:true}));
+    return {text: sample, model: requested};
+  }});
+  f.guard.configure('p1', {enabled:true, ttlSeconds:1800});
+  const attempt = f.guard.ensure(ctx());
+  const rejected = assert.rejects(attempt, {code:'guard_unverified'});
+  f.guard.clear(ctx().key); await rejected;
+  assert.equal(f.guard.snapshot().records[0].status, 'unchecked');
+  assert.equal(f.guard.snapshot().records[0].retryAt, null);
+  pending = false;
+  const restarted = createGuard(f.options);
+  assert.equal(restarted.snapshot().records[0].cooldownActive, false);
+  assert.equal((await restarted.ensure(ctx())).status, 'passed');
+  const filename = path.join(f.runtime, 'model-guard.json');
+  const saved = JSON.parse(fs.readFileSync(filename, 'utf8'));
+  saved.records[0].status = 'unverified'; delete saved.records[0].retryAt;
+  fs.writeFileSync(filename, JSON.stringify(saved));
+  const legacy = createGuard(f.options);
+  assert.equal(legacy.snapshot().records[0].cooldownActive, false);
+  assert.equal((await legacy.ensure(ctx())).status, 'passed');
 });
 
 test('two strong batches with the same different candidate latch and stay locked across restart', async t => {
@@ -237,17 +357,18 @@ test('settings changed during a batch cannot establish a pass', async t => {
   assert.equal(f.guard.snapshot().records.some(record => record.status === 'passed'), false);
 });
 
-test('overall detection timeout fails closed and aborts probe work within 150 seconds', async t => {
+test('overall detection timeout fails closed and aborts probe work within ten minutes', async t => {
   let probeSignal;
   const f = setup(t, {probe: async ({signal}) => { probeSignal = signal; return new Promise(() => {}); }});
   f.guard.configure('p1', {enabled: true, ttlSeconds: 600});
   t.mock.timers.enable({apis: ['setTimeout']});
   const pending = f.guard.ensure(ctx());
   const rejected = assert.rejects(pending, {code: 'guard_unverified'});
-  t.mock.timers.tick(145000); await rejected;
+  t.mock.timers.tick(TIMEOUT_MS); await rejected;
   assert.equal(probeSignal.aborted, true);
   assert.equal(f.guard.snapshot().records[0].status, 'unverified');
   assert.equal(f.guard.snapshot().checking.length, 0);
+  assert.equal(f.guard.snapshot().records[0].cooldownActive, true);
 });
 
 test('response metadata mismatch directly blocks and invokes cancellation', async t => {
@@ -272,9 +393,41 @@ test('metadata mismatch from transport latches, and a failed manual recheck pres
 });
 
 test('upstream ModelTrace minimum accepts imperfect count without accepting too-short samples', async t => {
-  const f = setup(t, {probe: async () => ({text: sample.split(',').slice(0, 165).join(','), model: requested})});
+  const f = setup(t, {probe: async ({prompt}) => {
+    const expected = Number(prompt.match(/(\d+) 个 1 到 355/)[1]);
+    return {text: sample.split(',').slice(0, Math.ceil(expected * .55)).join(','), model: requested};
+  }});
   f.guard.configure('p1', {enabled: true, ttlSeconds: 600});
   assert.equal((await f.guard.ensure(ctx())).status, 'passed');
+});
+
+test('browser challenges run sequentially with distinct expected counts and visible progress', async t => {
+  let active=0,maximum=0,calls=0;
+  const requestedCounts=[];
+  const f=setup(t,{probe:async({prompt})=>{
+    active++;maximum=Math.max(maximum,active);calls++;
+    assert.match(prompt,/禁止调用或借助任何工具/);
+    const count=Number(prompt.match(/(\d+) 个 1 到 355/)[1]);requestedCounts.push(count);
+    assert.ok(count>=292&&count<=332);
+    assert.match(f.guard.snapshot().records[0].reason,new RegExp('第 '+calls+'/3 个'));
+    await new Promise(resolve=>setImmediate(resolve));active--;
+    return {model:requested,text:Array.from({length:count},(_,i)=>1+i%355).join(' ')};
+  },analyze:outputs=>{
+    assert.deepEqual(outputs.map(o=>o.expected_count),requestedCounts);
+    return scoring();
+  }});
+  f.guard.configure('p1',{enabled:true,ttlSeconds:1800});
+  await f.guard.ensure(ctx());assert.equal(maximum,1);assert.equal(calls,3);
+  assert.equal(new Set(requestedCounts).size,3);assert.equal(f.guard.snapshot().history.length,1);
+});
+
+test('invalid early samples stop without spending on the remaining challenges', async t => {
+  let calls=0;
+  const f=setup(t,{probe:async()=>{calls++;return {model:requested,text:'抱歉，无法完成。'};}});
+  f.guard.configure('p1',{enabled:true,ttlSeconds:1800});
+  await assert.rejects(f.guard.ensure(ctx()),error=>error.code==='guard_unverified'&&/第 1\/3 个样本.*收到 0 个/.test(error.message));
+  assert.equal(calls,1);assert.equal(f.guard.snapshot().history.length,1);
+  await assert.rejects(f.guard.ensure(ctx()),{code:'guard_unverified'});assert.equal(calls,1);
 });
 
 test('route invalidation removes passes and admitted trust while retaining durable locks', async t => {
@@ -313,7 +466,7 @@ test('failed manual recheck cannot revive an older cached pass', async t => {
   f.guard.configure('p1', {enabled: true, ttlSeconds: 600}); await f.guard.ensure(ctx());
   mode = 'weak'; await assert.rejects(f.guard.ensure(ctx(), {force: true}), {code: 'guard_unverified'});
   assert.equal(f.count(), 6);
-  await assert.rejects(f.guard.ensure(ctx()), {code: 'guard_unverified'}); assert.equal(f.count(), 9);
+  await assert.rejects(f.guard.ensure(ctx()), {code: 'guard_unverified'}); assert.equal(f.count(), 6);
 });
 
 test('a quick contradictory confirmation cannot restore output admitted before suspicion', async t => {
@@ -324,6 +477,7 @@ test('a quick contradictory confirmation cannot restore output admitted before s
   await assert.rejects(f.guard.ensure(ctx(), {force: true}), {code: 'guard_unverified'});
   assert.equal(f.guard.snapshot().records[0].status, 'unverified');
   assert.throws(() => f.guard.assertAllowed(admitted), {code: 'guard_unverified'});
+  f.advance(FAILURE_COOLDOWN_SECONDS * 1000);
   const fresh = ctx(); await f.guard.ensure(fresh); assert.doesNotThrow(() => f.guard.assertAllowed(fresh));
   assert.throws(() => f.guard.assertAllowed(admitted), {code: 'guard_unverified'});
 });
@@ -337,7 +491,7 @@ test('first strong mismatch during manual recheck blocks admitted output before 
   f.guard.configure('p1', {enabled: true, ttlSeconds: 600});
   const admitted = ctx(); await f.guard.ensure(admitted);
   const manual = f.guard.ensure(ctx(), {force: true});
-  while (calls < 9) await new Promise(resolve => setImmediate(resolve));
+  while (calls < 7) await new Promise(resolve => setImmediate(resolve));
   assert.equal(f.guard.snapshot().records[0].status, 'suspect');
   assert.throws(() => f.guard.assertAllowed(admitted), {code: 'guard_unverified'});
   release(); await assert.rejects(manual, {code: 'guard_blocked'});
@@ -475,7 +629,7 @@ test('failed manual recheck records its actual failure while preserving the curr
   assert.equal(state.history.length, 3); assert.equal(state.history[2].status, 'blocked');
 });
 
-test('parallel probe metadata mismatches yield one result and business-response locks append once per new lock', async t => {
+test('probe metadata mismatches yield one result and business-response locks append once per new lock', async t => {
   const f = setup(t, {probe: async () => ({text: sample, model: different})});
   f.guard.configure('p1', {enabled: true, ttlSeconds: 600});
   await assert.rejects(f.guard.ensure(ctx()), {code: 'guard_blocked'});
@@ -525,7 +679,7 @@ test('timed-out work appends one cancellation outcome even if its probes complet
   t.mock.timers.enable({apis: ['setTimeout']});
   const pending = f.guard.ensure(ctx());
   const rejected = assert.rejects(pending, {code: 'guard_unverified'});
-  t.mock.timers.tick(145000); await rejected;
+  t.mock.timers.tick(TIMEOUT_MS); await rejected;
   const before = f.guard.snapshot().history;
   assert.equal(before.length, 1); assert.equal(before[0].status, 'unverified');
   release(); await new Promise(resolve => setImmediate(resolve));

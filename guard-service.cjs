@@ -40,9 +40,11 @@ function createGuardService({runtime, databasePath, configPath, getUpstream, log
   probe = apiProbe, engineFactory}) {
   const active = new Map();
   const recent = new Map();
-  const jobs = new Set();
+  const recentModels = new Map();
+  const jobs = new Map();
   let lastRoute;
   let settingsRevision = randomUUID();
+  let routeRevision = randomUUID();
   const budget = {bytes: 0, limit: 64 * 1024 * 1024};
   const factory = engineFactory || require('./guard.cjs').createGuard;
   const engine = factory({runtime,log,
@@ -59,6 +61,8 @@ function createGuardService({runtime, databasePath, configPath, getUpstream, log
     const current = readRoute(databasePath,getUpstream());
     const signature = current.available ? current.digest : 'unavailable';
     if (lastRoute && lastRoute.signature !== signature) {
+      routeRevision = randomUUID();
+      recent.clear(); recentModels.clear();
       // Invalidate temporary trust on an observed switch; stable keys retain
       // durable blocks when the user later returns to the original provider.
       if (lastRoute.providerId) engine.invalidate?.(lastRoute.providerId);
@@ -73,15 +77,15 @@ function createGuardService({runtime, databasePath, configPath, getUpstream, log
     return Object.values(state.providers).some(p => p.enabled);
   }
   const contextKey = (current,model,effort) => createHash('sha256').update(JSON.stringify([current.digest,model,effort])).digest('hex');
-  function makeContext(input, transport) {
+  function makeContext(input, transport, observed = false) {
     const current = route();
     if (!current.available) {
       if ((current.providerId && engine.policy(current.providerId).enabled) || hasEnabled()) throw guardFailure(current.reason);
       return null;
     }
-    if (typeof input?.model !== 'string' || !input.model || input.model.length > 160) throw guardFailure('请求模型名称无法验证。');
-    const effort = input.reasoning?.effort || 'default';
-    if (typeof effort !== 'string' || effort.length > 40) throw guardFailure('推理设置无法验证。');
+    if (typeof input?.model !== 'string' || !input.model.trim() || input.model.length > 160 || /[\u0000-\u001f\u007f]/.test(input.model)) throw guardFailure('请求模型名称无法验证。');
+    const effort = input.reasoning?.effort ?? 'default';
+    if (typeof effort !== 'string' || !effort.trim() || effort.length > 40 || /[\u0000-\u001f\u007f]/.test(effort)) throw guardFailure('推理设置无法验证。');
     const key = contextKey(current,input.model,effort);
     const safeHeaders = {};
     for (const key of ['authorization','x-api-key','api-key','user-agent','originator','openai-beta','openai-organization','openai-project']) {
@@ -89,8 +93,16 @@ function createGuardService({runtime, databasePath, configPath, getUpstream, log
     }
     const context = {key,providerId:current.providerId,providerName:current.providerName,model:input.model,effort,
       routeDigest:current.digest,transport:{...transport,headers:safeHeaders}};
-    // In-memory context is used only for manual checks on this same local route.
-    recent.set(current.providerId,context);
+    // Only project traffic updates the observed model. Manual probes must not
+    // make their selected model look like a request from the user's chat.
+    if (observed) {
+      context.observedAt = new Date().toISOString();
+      recent.set(current.providerId,context);
+      let contexts = recentModels.get(current.providerId);
+      if (!contexts) { contexts = new Map(); recentModels.set(current.providerId,contexts); }
+      contexts.delete(key); contexts.set(key,context);
+      while (contexts.size > 20) contexts.delete(contexts.keys().next().value);
+    }
     return context;
   }
   function assertRoute(context) {
@@ -98,7 +110,7 @@ function createGuardService({runtime, databasePath, configPath, getUpstream, log
     if (!current.available || current.digest !== context.routeDigest) throw guardFailure('检测或请求期间供应商配置已切换，请在新路由下重试。');
   }
   async function prepare(input,transport,signal) {
-    const context = makeContext(input,transport);
+    const context = makeContext(input,transport,true);
     if (!context || !engine.policy(context.providerId).enabled) return null;
     if (/\/compact\/?$/.test(transport.path)) throw guardFailure('模型保护暂不支持加密压缩响应，请使用普通 Responses 请求。');
     await engine.ensure(context,{signal});
@@ -118,17 +130,25 @@ function createGuardService({runtime, databasePath, configPath, getUpstream, log
     return () => { clearInterval(timer); set.delete(controller); if (!set.size) active.delete(context.key); };
   }
   function configuredContext(payload = {}) {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw guardFailure('手动检测设置无效。');
     const current = route();
     if (!current.available) throw guardFailure(current.reason);
     if (payload.providerId && payload.providerId !== current.providerId) throw guardFailure('请先在 CC Switch 切换到此供应商，再运行检测。');
+    if (payload.routeRevision !== undefined && payload.routeRevision !== routeRevision) throw guardFailure('供应商路由已改变，请刷新页面并核对所选模型后重试。');
     const previous = recent.get(current.providerId);
     const cached = previous?.routeDigest === current.digest ? previous : null;
     let text;
     try { text = fs.readFileSync(configPath,'utf8'); } catch { throw guardFailure('无法读取 Codex 配置。'); }
-    const model = payload.model || cached?.model || topString(text,'model');
-    const effort = payload.effort || cached?.effort || topString(text,'model_reasoning_effort') || 'default';
+    const configuredModel = topString(text,'model'), configuredEffort = topString(text,'model_reasoning_effort') || 'default';
+    const model = payload.model ?? cached?.model ?? configuredModel;
+    // An explicit model must not inherit another model's recently observed
+    // effort. The UI submits both fields; omitted effort uses matching context.
+    const latestMatching = [...(recentModels.get(current.providerId)?.values() || [])].reverse()
+      .find(context => context.routeDigest === current.digest && context.model === model);
+    const effort = payload.effort ?? latestMatching?.effort ?? (model === configuredModel ? configuredEffort : 'default');
+    const matching = recentModels.get(current.providerId)?.get(contextKey(current,model,effort));
     // Keep only probe-relevant authentication/client headers in memory.
-    let headers = cached?.transport.headers;
+    let headers = matching?.transport.headers || cached?.transport.headers;
     if (!headers) {
       let auth;
       try { auth = JSON.parse(fs.readFileSync(path.join(path.dirname(configPath),'auth.json'),'utf8')); } catch {}
@@ -143,20 +163,24 @@ function createGuardService({runtime, databasePath, configPath, getUpstream, log
     const current = route();
     const previous = recent.get(current.providerId);
     const cached = previous?.routeDigest === current.digest ? previous : null;
-    let model = cached?.model, effort = cached?.effort;
-    if (!model) {
-      try { const text = fs.readFileSync(configPath,'utf8'); model = topString(text,'model'); effort = topString(text,'model_reasoning_effort'); } catch {}
-    }
+    let configured = {};
+    try { const text = fs.readFileSync(configPath,'utf8'); configured = {model:topString(text,'model'),effort:topString(text,'model_reasoning_effort') || 'default'}; } catch {}
+    let model = cached?.model || configured.model, effort = cached?.effort || configured.effort;
     effort ||= 'default';
-    return {...engine.snapshot(),settingsRevision,current:{key:current.available&&model ? contextKey(current,model,effort) : undefined,
-      providerId:current.providerId,model,effort,available:current.available,reason:current.reason},
-      jobs:[...jobs]};
+    const state = engine.snapshot();
+    return {...state,settingsRevision,current:{key:current.available&&model ? contextKey(current,model,effort) : undefined,
+      providerId:current.providerId,model,effort,routeRevision,modelSource:cached?'request':model?'config':'unknown',
+      modelObservedAt:cached?.observedAt,available:current.available,reason:current.reason},configured,
+      currentRecords:(state.records || []).filter(record=>current.available && record.key===contextKey(current,record.model,record.effort)),
+      recentModels:[...(recentModels.get(current.providerId)?.values() || [])].filter(context=>context.routeDigest===current.digest)
+        .reverse().map(({key,model,effort,observedAt})=>({key,model,effort,observedAt})),
+      jobs:[...jobs.keys()],manualJobs:[...jobs.values()].map(({key,providerId,model,effort})=>({key,providerId,model,effort}))};
   }
   return {prepare,assertCurrent,watch,budget,snapshot,
     observe(input,transport) {
       // Read-only best effort for displaying the actual most recent model, even
       // when automatic protection is off. Never change passthrough semantics.
-      try { makeContext(input,transport); } catch {}
+      try { makeContext(input,transport,true); } catch {}
     },
     shouldInspect() {
       if (!hasEnabled()) return false;
@@ -181,7 +205,7 @@ function createGuardService({runtime, databasePath, configPath, getUpstream, log
       const context = configuredContext(payload);
       if (!context) throw guardFailure('没有可验证的供应商。');
       if (!jobs.has(context.key)) {
-        jobs.add(context.key);
+        jobs.set(context.key,context);
         Promise.resolve().then(() => engine.ensure(context,{force:true})).catch(error => {
           log('guard-manual-check-finished',{code:error.code || 'guard_unverified'});
         }).finally(() => jobs.delete(context.key));

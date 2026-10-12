@@ -110,3 +110,77 @@ test('probe results, cache reads and no-op settings saves keep the settings revi
   f.manager.handle('PUT','/guard/providers/two',{enabled:true,ttlSeconds:60,revision});
   assert.notEqual(f.manager.state().guard.settingsRevision,revision);
 });
+
+test('manual model selection does not replace the latest observed request or its source',async t=>{
+  const checks=[];
+  const f=fixture(t,{engineFactory:()=>({snapshot:()=>({providers:{},records:[],models:['gpt-6-astra','gpt-6-luna']}),
+    policy:()=>({enabled:false,ttlSeconds:600}),ensure:async context=>{checks.push(context);}})});
+  let state=f.guard.snapshot();
+  assert.equal(state.current.modelSource,'config');assert.equal(state.current.model,'gpt-6-astra');
+  assert.equal(state.current.modelObservedAt,undefined);assert.deepEqual(state.configured,{model:'gpt-6-astra',effort:'high'});
+  f.guard.observe({model:'gpt-6-luna',reasoning:{effort:'low'}},transport);
+  const observed=f.guard.snapshot().current;
+  assert.equal(observed.modelSource,'request');assert.equal(observed.model,'gpt-6-luna');
+  assert.ok(Number.isFinite(Date.parse(observed.modelObservedAt)));
+  f.guard.check({providerId:'one',model:'gpt-6-astra',effort:'max'});
+  assert.equal(f.guard.snapshot().manualJobs[0].model,'gpt-6-astra');
+  for(let i=0;i<20&&f.guard.snapshot().jobs.length;i++)await new Promise(r=>setTimeout(r,5));
+  assert.equal(checks.length,1);assert.equal(checks[0].model,'gpt-6-astra');assert.equal(checks[0].effort,'max');
+  state=f.guard.snapshot();assert.deepEqual(state.current,observed);
+  assert.deepEqual(state.recentModels.map(c=>[c.model,c.effort]),[['gpt-6-luna','low']]);
+  assert.doesNotMatch(JSON.stringify(state),/REQUEST_SECRET|LOCAL_AUTH_SECRET|ROUTE_SECRET|authorization/);
+});
+
+test('automatic requests keep their actual model and matching request credentials are used for manual probes',async t=>{
+  const checks=[];
+  const f=fixture(t,{engineFactory:()=>({snapshot:()=>({providers:{one:{enabled:true}},records:[],models:['gpt-6-astra','gpt-6-luna']}),
+    policy:()=>({enabled:true,ttlSeconds:600}),ensure:async context=>{checks.push(context);},assertAllowed:()=>{}})});
+  const astra=await f.guard.prepare(input,{...transport,headers:{authorization:'Bearer ASTRA_REQUEST_SECRET'}});
+  const luna=await f.guard.prepare({model:'gpt-6-luna',reasoning:{effort:'low'}},{...transport,headers:{authorization:'Bearer LUNA_REQUEST_SECRET'}});
+  assert.equal(astra.model,'gpt-6-astra');assert.equal(luna.model,'gpt-6-luna');
+  f.guard.check({providerId:'one',model:input.model,effort:'high'});
+  for(let i=0;i<20&&f.guard.snapshot().jobs.length;i++)await new Promise(r=>setTimeout(r,5));
+  assert.deepEqual(checks.map(c=>c.model),['gpt-6-astra','gpt-6-luna','gpt-6-astra']);
+  assert.equal(checks[2].transport.headers.authorization,'Bearer ASTRA_REQUEST_SECRET');
+  assert.equal(f.guard.snapshot().current.model,'gpt-6-luna');
+  assert.doesNotMatch(JSON.stringify(f.guard.snapshot()),/ASTRA_REQUEST_SECRET|LUNA_REQUEST_SECRET/);
+});
+
+test('manual model without effort does not inherit another model effort; route changes hide stale observations and results',async t=>{
+  const checks=[],records=[];
+  const f=fixture(t,{engineFactory:()=>({snapshot:()=>({providers:{},records,models:['gpt-6-astra','gpt-6-luna']}),
+    policy:()=>({enabled:false,ttlSeconds:600}),ensure:async context=>{checks.push(context);}})});
+  f.guard.observe({model:'gpt-6-luna',reasoning:{effort:'low'}},transport);
+  const observed=f.guard.snapshot().current;
+  records.push({key:observed.key,providerId:'one',model:'gpt-6-luna',effort:'low',status:'passed'});
+  assert.equal(f.guard.snapshot().currentRecords.length,1);
+  f.guard.check({providerId:'one',model:'gpt-6-astra'});
+  for(let i=0;i<20&&f.guard.snapshot().jobs.length;i++)await new Promise(r=>setTimeout(r,5));
+  assert.equal(checks[0].effort,'high');
+  f.db.exec("UPDATE providers SET settings_config=replace(settings_config,'ROUTE_SECRET','NEW_SECRET') WHERE id='one'");
+  const state=f.guard.snapshot();assert.equal(state.current.modelSource,'config');
+  assert.deepEqual(state.recentModels,[]);assert.deepEqual(state.currentRecords,[]);
+});
+
+test('manual selection rejects stale route revisions and clears prior route credentials',async t=>{
+  const checks=[];
+  const f=fixture(t,{engineFactory:()=>({snapshot:()=>({providers:{},records:[],models:['gpt-6-astra','gpt-6-luna']}),
+    policy:()=>({enabled:false,ttlSeconds:600}),ensure:async context=>{checks.push(context);}})});
+  f.guard.observe(input,transport);
+  const first=f.guard.snapshot().current;
+  f.guard.observe({model:'gpt-6-luna',reasoning:{effort:'low'}},transport);
+  assert.equal(f.guard.snapshot().current.routeRevision,first.routeRevision);
+  f.db.exec("UPDATE providers SET is_current=(id='two')");f.guard.snapshot();
+  f.db.exec("UPDATE providers SET is_current=(id='one')");
+  const next=f.guard.snapshot();
+  assert.notEqual(next.current.routeRevision,first.routeRevision);
+  assert.equal(next.current.modelSource,'config');assert.deepEqual(next.recentModels,[]);
+  assert.throws(()=>f.guard.check({providerId:'one',model:input.model,routeRevision:first.routeRevision}),/路由已改变/);
+  f.guard.check({providerId:'one',model:'unlisted-model',routeRevision:next.current.routeRevision});
+  for(let i=0;i<20&&f.guard.snapshot().jobs.length;i++)await new Promise(r=>setTimeout(r,5));
+  assert.equal(checks.length,1);assert.equal(checks[0].effort,'default');
+  assert.equal(checks[0].transport.headers.authorization,'Bearer LOCAL_AUTH_SECRET');
+  for(const payload of [null,[],{model:'\n'}, {model:input.model,effort:''},{model:input.model,effort:42}]) {
+    assert.throws(()=>f.guard.check(payload),{code:'guard_unverified'});
+  }
+});

@@ -30,12 +30,19 @@ async function fixture(t) {
   db.prepare('INSERT INTO providers VALUES(?,?,?,?,?,0)').run('provider','Test Provider','codex',1,
     JSON.stringify({config:'model_provider="fixture"\n[model_providers.fixture]\nbase_url="https://fixture.invalid/v1"'}));
   fs.writeFileSync(configPath,'model="gpt-6-astra"\nmodel_reasoning_effort="high"');
-  const events=[];let mismatch=false,businessMismatch=false;
+  const events=[],probeModels=[];let mismatch=false,businessMismatch=false,probeFailure=null;
   const upstream=http.createServer(async(req,res)=>{
     const chunks=[];for await(const chunk of req) chunks.push(chunk);
     const body=JSON.parse(Buffer.concat(chunks));
-    const isProbe=body.instructions?.includes('number-generation');
+    const isProbe=body.instructions?.includes('整数选择任务');
     events.push(isProbe?'probe':'project');
+    if(isProbe) {
+      probeModels.push({model:body.model,effort:body.reasoning?.effort || 'default'});
+      if(probeFailure) {
+        res.writeHead(probeFailure.status,{'content-type':'application/json'});
+        res.end(JSON.stringify(probeFailure.body));return;
+      }
+    }
     res.writeHead(200,{'content-type':'text/event-stream'});
     if(isProbe) {
       assert.doesNotMatch(JSON.stringify(body),/PRIVATE_PROJECT/);
@@ -60,13 +67,14 @@ async function fixture(t) {
   const close=async server=>{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));};
   await launch();
   t.after(async()=>{await close(proxy);await close(upstream);db.close();assert.equal(path.dirname(fs.realpathSync(runtime)),root);fs.rmSync(runtime,{recursive:true,force:true});});
-  return {events,db,get guard(){return guard;},
+  return {events,probeModels,db,get guard(){return guard;},
     state:async()=>{const response=await fetch(url+'/__codex_filter__/api/state',{headers:{'x-filter-token':'fixture-token'}});assert.equal(response.status,200);return (await response.json()).guard;},
     configure:settings=>manager.handle('PUT','/guard/providers/provider',{...settings,revision:manager.state().guard.settingsRevision}),
     mismatch:value=>{mismatch=value;},businessMismatch:value=>{businessMismatch=value;},
+    probeFailure:value=>{probeFailure=value;},
     restart:async()=>{await close(proxy);await launch();},
-    call:async()=>{const response=await fetch(url+'/v1/responses',{method:'POST',headers:{'content-type':'application/json'},
-      body:JSON.stringify({model:requested,reasoning:{effort:'high'},stream:true,input:'PRIVATE_PROJECT'})});
+    call:async(overrides={})=>{const response=await fetch(url+'/v1/responses',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({model:requested,reasoning:{effort:'high'},stream:true,input:'PRIVATE_PROJECT',...overrides})});
       return {status:response.status,body:await response.text()};}
   };
 }
@@ -100,4 +108,49 @@ test('real cancellation on response-model mismatch withholds tool calls and pers
   const history=(await f.state()).history;assert.deepEqual(history.map(x=>[x.status,x.source]),[['blocked','response'],['passed','automatic']]);
   const count=f.events.length;await f.restart();assert.equal((await f.call()).status,409);assert.equal(f.events.length,count);
   assert.deepEqual((await f.state()).history,history);
+});
+
+test('unsupported upstream model fails closed once, survives retries and restart, and manual model choice remains separate',async t=>{
+  const f=await fixture(t);f.configure({enabled:true,ttlSeconds:1800});
+  f.probeFailure({status:503,body:{error:{code:'model_not_found',message:'No available channel for model; PRIVATE_UPSTREAM_DETAIL'}}});
+  const request={model:alternate,reasoning:{effort:'low'}};
+  const rejected=await f.call(request);
+  assert.equal(rejected.status,409);assert.match(rejected.body,/503/);
+  assert.doesNotMatch(rejected.body,/PRIVATE_UPSTREAM_DETAIL|PROJECT_TOOL_OUTPUT|PROJECT_RESULT/);
+  let state=await f.state();
+  assert.equal(state.current.model,alternate);assert.equal(state.current.effort,'low');
+  assert.equal(state.history.length,1);assert.equal(state.history[0].source,'automatic');
+  assert.equal(state.history[0].status,'unverified');assert.equal(state.records[0].cooldownActive,true);
+  assert.equal(state.failureCooldownSeconds,60);
+  const firstHistory=state.history,probes=f.events.length;
+  assert.ok(probes>=1 && probes<=3);assert.ok(f.events.every(x=>x==='probe'));
+  assert.ok(f.probeModels.every(x=>x.model===alternate && x.effort==='low'));
+  for(let i=0;i<6;i++) {
+    const retry=await f.call(request);assert.equal(retry.status,409);
+    assert.doesNotMatch(retry.body,/PROJECT_TOOL_OUTPUT|PROJECT_RESULT/);
+  }
+  assert.equal(f.events.length,probes);assert.deepEqual((await f.state()).history,firstHistory);
+  await f.restart();assert.equal((await f.call(request)).status,409);
+  assert.equal(f.events.length,probes);assert.deepEqual((await f.state()).history,firstHistory);
+
+  f.probeFailure(null);
+  f.guard.check({providerId:'provider',model:requested,effort:'high'});
+  const deadline=Date.now()+5000;
+  while(f.guard.snapshot().jobs.length && Date.now()<deadline) await new Promise(resolve=>setTimeout(resolve,10));
+  state=await f.state();assert.equal(state.jobs.length,0);
+  assert.deepEqual(state.history.map(x=>[x.status,x.source]),[['passed','manual'],['unverified','automatic']]);
+  assert.equal(state.current.model,alternate);assert.equal(state.current.effort,'low');
+  assert.deepEqual(f.probeModels.slice(-3),Array.from({length:3},()=>({model:requested,effort:'high'})));
+  assert.equal((await f.call()).status,200);assert.equal(f.events.length,probes+4);
+});
+
+test('upstream concurrency errors do not amplify automatic probes or history while cooling down',async t=>{
+  const f=await fixture(t);f.configure({enabled:true,ttlSeconds:1800});
+  f.probeFailure({status:429,body:{error:{code:'concurrency_queued',message:'All concurrency slots are busy'}}});
+  assert.equal((await f.call()).status,409);
+  const probes=f.events.length,history=(await f.state()).history;
+  assert.equal(history.length,1);assert.match(history[0].reason,/429/);
+  const retries=await Promise.all(Array.from({length:8},()=>f.call()));
+  assert.ok(retries.every(r=>r.status===409));assert.equal(f.events.length,probes);
+  assert.deepEqual((await f.state()).history,history);assert.ok(f.events.every(x=>x==='probe'));
 });

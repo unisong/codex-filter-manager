@@ -12,9 +12,10 @@ Codex Filter Manager 自有代码采用 [MIT License](LICENSE)。这不改变随
 | 本仓库文件 | 上游文件 |
 | --- | --- |
 | `vendor/modeltrace/fingerprint-core.mjs` | `static/fingerprint-core.js` |
+| `vendor/modeltrace/challenge-browser.mjs` | `static/challenge-browser.js` |
 | `vendor/modeltrace/unified_bank.json` | `data/unified_bank.json` |
 
-评分核心和参考库按原内容随附；扩展名调整用于 Node.js ES Module 加载。下载来源、固定提交与 SHA-256 记录在 [`vendor/modeltrace/provenance.json`](vendor/modeltrace/provenance.json)，运行时会验证这两个文件的校验值。本项目围绕评分器实现本机代理、供应商设置、探针调度、响应拦截与界面，没有将 ModelTrace 相对权重包装成真实身份概率。
+评分核心、网页出题器和参考库按原内容随附；扩展名调整用于 Node.js ES Module 加载。下载来源、固定提交与 SHA-256 记录在 [`vendor/modeltrace/provenance.json`](vendor/modeltrace/provenance.json)，运行时会验证这三个文件的校验值。本项目围绕评分器实现本机代理、供应商设置、探针调度、响应拦截与界面，没有将 ModelTrace 相对权重包装成真实身份概率。
 
 这是**本地代码与数据集成**，不是调用 ModelTrace 提供的托管 API。探针通过用户自己的 CC Switch 访问其供应商。
 

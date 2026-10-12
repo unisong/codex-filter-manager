@@ -24,8 +24,9 @@ state = {
     "revision": "offline", "currentPolicy": {"filter": False}, "autoFailover": False,
     "aliasCompatibility": {"configured": False, "enabled": False, "activeCount": 0},
     "filter": {"filterVersion": filter_version, "state": "filtering", "stats": {}},
-    "guard": {"models": ["gpt-6-astra", "gpt-6-sol"], "providers": {}, "records": [], "settingsRevision": "revision-0", "history": [], "historyLimit": 100,
-              "current": {"providerId": "gugu", "model": "gpt-6-astra", "effort": "high", "available": True}},
+    "guard": {"models": ["gpt-6-astra", "gpt-6-sol", "gpt-6-luna"], "providers": {}, "records": [], "settingsRevision": "revision-0", "history": [], "historyLimit": 100,
+              "configured": {"model": "gpt-6-astra", "effort": "high"}, "failureCooldownSeconds": 60,
+              "current": {"providerId": "gugu", "model": "gpt-6-astra", "effort": "high", "available": True, "key": "fixture-key", "modelSource": "config", "routeRevision": "route-0"}},
 }
 calls = []
 server_token = "offline-ui-test"
@@ -69,13 +70,17 @@ def route_request(route):
         revision_counter += 1
         state["guard"]["settingsRevision"] = "revision-" + str(revision_counter)
     elif request.method == "POST" and path == "/api/guard/check":
-        assert payload == {"providerId": "gugu", "model": "gpt-6-astra", "effort": "high"}
+        assert payload == {"providerId": "gugu", "model": "gpt-6-astra", "effort": "high", "routeRevision": state["guard"]["current"]["routeRevision"]}
         state["guard"]["records"] = [deepcopy(record)]
     elif request.method == "POST" and path == "/api/guard/clear":
         assert set(payload) == {"key"} and any(item["key"] == payload["key"] for item in state["guard"]["records"])
         state["guard"]["records"] = [{**item, "status": "unchecked", "reason": "锁定已清除，下次请求仍须重新检测。", "expiresAt": None, "cacheValid": False} if item["key"] == payload["key"] else item for item in state["guard"]["records"]]
     elif request.method != "GET":
         raise AssertionError((request.method, path, payload))
+    if state.get("guard"):
+        current = state["guard"].get("current", {})
+        state["guard"]["currentRecords"] = [item for item in state["guard"].get("records", [])
+            if item["providerId"] == current.get("providerId") and (not current.get("key") or item["key"] == current["key"])]
     route.fulfill(status=200, content_type="application/json", body=json.dumps(state, ensure_ascii=False))
 
 with sync_playwright() as p:
@@ -127,6 +132,28 @@ with sync_playwright() as p:
     expect(page.locator("#guardTest")).to_be_enabled()
     assert page.locator("#providers img").count() == 0
 
+    expect(page.locator("#guardModelSource")).to_contain_text("配置文件的默认值")
+    expect(page.locator("#guardManualModel")).to_have_value("gpt-6-astra")
+    page.locator("#guardManualModel").select_option("gpt-6-sol")
+    expect(page.locator("#guardManualEffort")).to_have_value("default")
+    page.locator("#guardManualEffort").select_option("xhigh")
+    state["guard"]["current"].update(model="gpt-6-luna", effort="low", modelSource="request", modelObservedAt=now.isoformat())
+    state["guard"]["recentModels"] = [{"model": "gpt-6-luna", "effort": "low", "observedAt": now.isoformat()}]
+    page.locator("#refresh").click()
+    expect(page.locator("#guardModel")).to_contain_text("gpt-6-luna")
+    expect(page.locator("#guardModelSource")).to_contain_text("不代表当前前台会话")
+    expect(page.locator("#guardManualModel")).to_have_value("gpt-6-sol")
+    expect(page.locator("#guardManualEffort")).to_have_value("xhigh")
+    page.locator("#guardUseRecent").click()
+    expect(page.locator("#guardManualModel")).to_have_value("gpt-6-luna")
+    expect(page.locator("#guardManualEffort")).to_have_value("low")
+    state["guard"]["current"]["routeRevision"] = "route-1"
+    page.locator("#refresh").click()
+    expect(page.locator("#guardManualModel")).to_have_value("gpt-6-astra")
+    expect(page.locator("#guardManualEffort")).to_have_value("high")
+    assert not any(call[1] == "/api/guard/check" for call in calls)
+    state["guard"]["current"].update(model="gpt-6-astra", effort="high")
+
     select_view(page, "providers")
     page.get_by_role("switch", name="演示供应商 模型保护", exact=True).click()
     expect(page.locator("#guardEnabled")).to_have_attribute("aria-checked", "true")
@@ -145,6 +172,11 @@ with sync_playwright() as p:
     page.locator("#guardTest").click()
     expect(page.locator("#guardBadge")).to_have_text("检测中")
     expect(page.locator("#guardTest")).to_be_disabled()
+    state["guard"]["checking"] = [{**record, "progress": {"round": 1, "sample": 2, "samplesPerRound": 3}}]
+    page.locator("#refresh").click()
+    expect(page.locator("#guardEvidence")).to_contain_text("第 1 轮 · 正在采集第 2/3 个样本")
+    expect(page.locator("#guardActionNote")).to_contain_text("整次最多 10 分钟")
+    state["guard"]["checking"] = []
     state["guard"]["records"][0].update(status="passed", reason="指纹一致", prediction="gpt-6-astra", score=0.92, rounds=1)
     expect(page.locator("#guardBadge")).to_have_text("指纹一致", timeout=4000)
     expect(page.locator("#guardEvidence")).to_contain_text("非概率")
@@ -155,6 +187,15 @@ with sync_playwright() as p:
     expect(page.locator("#guardVerdict")).to_have_text("指纹一致")
     expect(page.locator("#guardCheckedAt")).to_contain_text("每次请求检测")
     state["guard"]["records"][0].update(cacheValid=True)
+    before_cooling_calls = len([call for call in calls if call[1] == "/api/guard/check"])
+    saved_pass = deepcopy(state["guard"]["records"][0])
+    state["guard"]["records"][0].update(status="unverified", reason="HTTP 503：模型不可用", cooldownActive=True, retryAt=(now + timedelta(seconds=60)).isoformat(), retryAfterSeconds=60)
+    page.locator("#refresh").click()
+    expect(page.locator("#guardTest")).to_have_text("立即手动重试")
+    expect(page.locator("#guardActionNote")).to_contain_text("不产生重复检测")
+    expect(page.locator("#guardTest")).to_be_enabled()
+    assert len([call for call in calls if call[1] == "/api/guard/check"]) == before_cooling_calls
+    state["guard"]["records"][0] = saved_pass
     state["guard"]["current"].update(available=False, reason="路由切换中")
     page.locator("#refresh").click()
     expect(page.locator("#guardBadge")).to_have_text("未能验证")
@@ -191,6 +232,7 @@ with sync_playwright() as p:
     state["guard"]["current"]["model"] = "gpt-6.1-sol"
     state["guard"]["current"]["key"] = "unsupported-model-route-key"
     page.locator("#refresh").click()
+    page.locator("#guardManualModel").select_option("gpt-6.1-sol")
     expect(page.locator("#guardBadge")).to_have_text("模型尚不支持")
     expect(page.locator("#guardTest")).to_be_disabled()
     expect(page.locator("#guardAlert")).to_contain_text("参考库")

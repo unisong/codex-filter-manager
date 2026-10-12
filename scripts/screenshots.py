@@ -33,11 +33,17 @@ state = {'providers': providers, 'revision': 'demo-revision', 'currentPolicy': {
     'filter': {'filterVersion': version, 'state': 'filtering', 'stats': {'filteredRequests': 128, 'removedEncryptedContentItems': 436}},
     'guard': {'models': ['gpt-6-astra', 'gpt-6-sol'], 'providers': {'demo-main': {'enabled': True, 'ttlSeconds': 1800}}, 'settingsRevision': 'demo-guard', 'records': [record], 'history': history, 'historyLimit': 100, 'current': {'providerId': 'demo-main', 'model': record['model'], 'effort': record['effort'], 'available': True, 'key': record['key']}}}
 configured_state = deepcopy(state)
+for snapshot in [state, configured_state]:
+    snapshot['guard'].update(failureCooldownSeconds=60,
+        configured={'model': record['model'], 'effort': record['effort']},
+        recentModels=[{'key': record['key'], 'model': record['model'], 'effort': record['effort'], 'observedAt': now.isoformat()}],
+        currentRecords=[deepcopy(record)])
+    snapshot['guard']['current'].update(modelSource='request', modelObservedAt=now.isoformat(), routeRevision='demo-route')
 for provider in state['providers']:
     provider.update(source='default', rule=deepcopy(off))
 state['currentPolicy'] = {'filter': False}
 state['filter']['stats'] = {'filteredRequests': 0, 'removedEncryptedContentItems': 0}
-state['guard'].update(providers={}, records=[], history=[])
+state['guard'].update(providers={}, records=[], currentRecords=[], history=[])
 with sync_playwright() as p:
     browser = p.chromium.launch(headless=True, **({'executable_path': os.environ['CHROME_PATH']} if os.environ.get('CHROME_PATH') else {}))
     page = browser.new_page(viewport={'width': 1440, 'height': 1180}, timezone_id='Asia/Shanghai', device_scale_factor=1)
@@ -73,7 +79,7 @@ with sync_playwright() as p:
         page.screenshot(path=str(output / (view + '.png')))
         screenshots.append(view + '.png')
     state = deepcopy(configured_state)
-    state['guard'].update(providers={}, records=[], history=[])
+    state['guard'].update(providers={}, records=[], currentRecords=[], history=[])
     settings_page = browser.new_page(viewport={'width': 1200, 'height': 1400}, timezone_id='Asia/Shanghai', device_scale_factor=2)
     settings_page.on('pageerror', lambda error: errors.append(str(error)))
     settings_page.route('**/*', route_request)

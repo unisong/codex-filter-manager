@@ -46,13 +46,15 @@ th:first-child{width:37%}th:nth-child(2){width:18%}th:nth-child(3){width:16%}th:
    <div class="guard-body">
     <div class="guard-banner" id="guardAlert" role="status" hidden></div>
     <div class="guard-overview">
-     <div class="guard-summary"><div class="label">当前供应商 · 模型</div><strong id="guardProvider">等待供应商信息</strong><strong class="guard-model" id="guardModel">等待模型请求</strong><p class="guard-detail" id="guardCurrentDetail">读取保护状态…</p></div>
-     <div class="guard-summary"><div class="label">最近检测</div><strong id="guardVerdict">尚无检测记录</strong><p class="guard-detail" id="guardEvidence">启用后将检查实际请求的模型。</p><p class="guard-detail" id="guardCheckedAt"></p></div>
+     <div class="guard-summary"><div class="label" id="guardModelLabel">当前供应商 · 请求模型来源</div><strong id="guardProvider">等待供应商信息</strong><strong class="guard-model" id="guardModel">等待模型请求</strong><p class="guard-detail" id="guardModelSource"></p><p class="guard-detail" id="guardCurrentDetail">读取保护状态…</p></div>
+     <div class="guard-summary"><div class="label" id="guardVerdictLabel">所选检测模型 · 最近检测</div><strong id="guardVerdict">尚无检测记录</strong><p class="guard-detail" id="guardEvidence">启用后将检查实际请求的模型。</p><p class="guard-detail" id="guardCheckedAt"></p></div>
     </div>
-    <div class="guard-options" id="guardOptions"><label for="guardTtl">检测间隔 <select id="guardTtl" disabled><option value="0">每次请求</option><option value="60">1 分钟</option><option value="300">5 分钟</option><option value="600">10 分钟（默认）</option><option value="1800">30 分钟</option><option value="3600">60 分钟</option></select></label><span class="guard-config-note">通过后按间隔复用结果；切换模型后重新检测。</span></div>
-    <div class="guard-actions"><button class="button primary" id="guardTest" disabled>立即检测当前模型</button><button class="button" id="guardReset" disabled hidden>清除锁定，等待重新检测</button><span class="guard-detail" id="guardActionNote">检测使用独立请求，不把题目或结果写入项目对话。</span></div>
-    <p class="guard-detail" style="margin-top:14px">每次检测通常消耗 3 次独立请求，疑似不一致时增加至 6 次，按上游计费。保护开启时，项目响应须完整校验后才会显示，期间没有逐字输出。</p>
-    <details class="guard-method"><summary>检测方式与边界</summary><p id="guardMethodDetail">采用 ModelTrace 行为指纹和返回模型一致性检查。指纹匹配分不是可信概率，也不能证明推理质量或代码正确性。暂未收录的模型会显示“不支持”，开启保护后会拒绝放行。</p><p>算法与参考库来自 <a href="https://github.com/xqy2006/ModelTrace" target="_blank" rel="noopener noreferrer">ModelTrace（MIT）</a>，在本机评分。检测请求发给你在 CC Switch 选择的供应商，不使用 ModelTrace 的远程检测接口。另曾评估 <a href="https://github.com/chen-006/meow-llm-detector" target="_blank" rel="noopener noreferrer">meow-llm-detector</a>，未集成其代码或数据。</p><p>疑似模型不一致经复核后，会持久锁定该供应商与模型，并丢弃受影响的项目响应。网络或检测错误记为“未能验证”，不会被标为已确认降智。清除锁定后仍需重新检测通过。</p><p>检测间隔内的上游变化可能漏检；独立检测通过也不能证明每一次项目请求使用相同模型，无法保证零污染。需要更频繁检查时可选“每次请求”。</p></details>
+    <div class="guard-options" id="guardOptions"><label for="guardTtl">通过结果有效期 <select id="guardTtl" disabled><option value="0">每次请求</option><option value="60">1 分钟</option><option value="300">5 分钟</option><option value="600">10 分钟（默认）</option><option value="1800">30 分钟</option><option value="3600">60 分钟</option></select></label><span class="guard-config-note">自动保护跟随实际请求。通过后按此有效期复用；失败冷却 60 秒，可手动重试。</span></div>
+    <div class="guard-options"><label for="guardManualModel">手动检测模型 <select id="guardManualModel" disabled></select></label><label for="guardManualEffort">推理强度 <select id="guardManualEffort" disabled></select></label><button class="button small" id="guardUseConfig" type="button" disabled>采用配置模型</button><button class="button small" id="guardUseRecent" type="button" disabled>采用最近请求</button></div>
+    <p class="guard-config-note" id="guardSelectionNote" style="margin-top:8px"></p>
+    <div class="guard-actions"><button class="button primary" id="guardTest" disabled>立即检测所选模型</button><button class="button" id="guardReset" disabled hidden>清除锁定，等待重新检测</button><span class="guard-detail" id="guardActionNote">检测使用独立请求，不把题目或结果写入项目对话。</span></div>
+    <p class="guard-detail" style="margin-top:14px">采用 ModelTrace 网页同版题目，逐个采集 3 个独立样本，疑似不一致时增加至 6 个，按上游计费。单样本最多 180 秒，整次最多 10 分钟。保护开启时，项目响应完整校验后才会显示。</p>
+    <details class="guard-method"><summary>检测方式与边界</summary><p id="guardMethodDetail">采用 ModelTrace 行为指纹和返回模型一致性检查。指纹匹配分不是可信概率，也不能证明推理质量或代码正确性。暂未收录的模型会显示“不支持”，开启保护后会拒绝放行。</p><p>算法与参考库来自 <a href="https://github.com/xqy2006/ModelTrace" target="_blank" rel="noopener noreferrer">ModelTrace（MIT）</a>，在本机评分。检测请求发给你在 CC Switch 选择的供应商，不使用 ModelTrace 的远程检测接口。另曾评估 <a href="https://github.com/chen-006/meow-llm-detector" target="_blank" rel="noopener noreferrer">meow-llm-detector</a>，未集成其代码或数据。</p><p>疑似模型不一致经复核后，会持久锁定该供应商与模型，并丢弃受影响的项目响应。网络或检测错误记为“未能验证”，不会被标为已确认降智。清除锁定后仍需重新检测通过。</p><p>通过结果的有效期内，上游变化可能漏检；独立检测通过也不能证明每一次项目请求使用相同模型，无法保证零污染。需要更频繁检查时可选“每次请求”。</p></details>
     <section class="guard-records" id="guardLocksSection" aria-label="当前锁定" hidden><div class="guard-history-head"><h3>当前锁定</h3><span class="guard-record-meta" id="guardLocksCount"></span></div><div id="guardRecords"></div></section>
    </div>
   </section>
@@ -79,7 +81,7 @@ th:first-child{width:37%}th:nth-child(2){width:18%}th:nth-child(3){width:16%}th:
   <label class="setting"><input id="stripResponsesLiteHeader" type="checkbox"><span><strong>Lite 协议兼容</strong><small>默认关闭。仅在上游提示 Lite 与 reasoning.context 不兼容时按需开启。</small></span></label>
  </div><div class="help">历史过滤无法迁移模型之前的内部推理状态。只有密文的压缩摘要会明确报错，避免静默丢失历史。原会话文件不会被修改。</div>
  <div class="actions"><button class="button primary" id="saveRule">保存设置</button><button class="button" id="disableRule">关闭全部兼容</button><button class="button" id="resetRule">恢复默认</button></div><p class="endpoint" style="margin-top:14px" id="drawerSource"></p>
- <section id="drawerGuard" class="guard-records"><h3>独立的模型保护设置</h3><label class="setting"><input id="drawerGuardEnabled" type="checkbox"><span><strong>开启降智检测与切断保护</strong><small>每次检测产生 3–6 次上游计费请求。保护期间会暂存完整响应，通过检查后再送达项目；不支持或无法验证的模型将被拦截。</small></span></label><div class="guard-options"><label for="drawerGuardTtl">检测间隔 <select id="drawerGuardTtl"><option value="0">每次请求</option><option value="60">1 分钟</option><option value="300">5 分钟</option><option value="600">10 分钟（默认）</option><option value="1800">30 分钟</option><option value="3600">60 分钟</option></select></label></div><p class="guard-detail" id="drawerGuardStatus" style="margin-top:12px"></p><div class="actions"><button class="button primary" id="saveGuard">保存模型保护</button></div><p class="guard-config-note" style="margin-top:10px">与历史过滤分别保存。恢复兼容默认规则不会更改模型保护。</p></section>
+ <section id="drawerGuard" class="guard-records"><h3>独立的模型保护设置</h3><label class="setting"><input id="drawerGuardEnabled" type="checkbox"><span><strong>开启降智检测与切断保护</strong><small>每次检测产生 3–6 次上游计费请求。保护期间会暂存完整响应，通过检查后再送达项目；不支持或无法验证的模型将被拦截。</small></span></label><div class="guard-options"><label for="drawerGuardTtl">通过结果有效期 <select id="drawerGuardTtl"><option value="0">每次请求</option><option value="60">1 分钟</option><option value="300">5 分钟</option><option value="600">10 分钟（默认）</option><option value="1800">30 分钟</option><option value="3600">60 分钟</option></select></label></div><p class="guard-detail" id="drawerGuardStatus" style="margin-top:12px"></p><div class="actions"><button class="button primary" id="saveGuard">保存模型保护</button></div><p class="guard-config-note" style="margin-top:10px">与历史过滤分别保存。恢复兼容默认规则不会更改模型保护。</p></section>
 </section></div>
 <div class="toast" id="toast" role="status" hidden></div>
 <script>
@@ -88,6 +90,7 @@ const token = __FILTER_TOKEN_JSON__;
 const $ = id => document.getElementById(id);
 let state, selectedId, editRevision, editGuardRevision, tab = 'all', busy = false, loading = false, authExpired = false, toastTimer, focusBefore, lastRefresh = 0;
 let activeView='providers', historyOffset=0, historyAnchor=null;
+let manualSelection=null;
 const historyPageSize=10;
 const expandedHistoryIds=new Set();
 const keys = ['historyFilter','preserveEncryptedInclude','stripResponsesLiteHeader'];
@@ -139,10 +142,25 @@ function guardTime(value) { if (!value) return '尚未检测'; const date = new 
 function guardChecking() { return !!state?.guard?.checking?.length || !!state?.guard?.jobs?.length || (state?.guard?.records || []).some(r=>['checking','suspect'].includes(r.status)); }
 function selectTtl(id, value) { const select=$(id); const n=Number.isInteger(value)?value:600; if (![...select.options].some(o=>Number(o.value)===n)) select.add(new Option(n+' 秒',String(n))); select.value=String(n); }
 function guardRecordForCurrent() {
- const current=state?.guard?.current;
- if(!current?.providerId)return null;
- if(current.key)return (state.guard.records||[]).find(r=>r.key===current.key)||null;
- return guardRecords(current.providerId,current.model,current.effort)[0] || null;
+ if(!manualSelection)return null;
+ return (state?.guard?.currentRecords || []).find(r=>r.model===manualSelection.model&&r.effort===manualSelection.effort)||null;
+}
+function renderManualSelection() {
+ const g=state.guard,current=g.current||{};
+  if(!manualSelection||manualSelection.providerId!==current.providerId||manualSelection.routeRevision!==current.routeRevision) {
+  const configured=g.configured?.model ? g.configured : null;
+  manualSelection={providerId:current.providerId,routeRevision:current.routeRevision,model:configured?.model||current.model||'',effort:configured?.effort||current.effort||'default',source:configured?'config':current.modelSource||'unknown'};
+ }
+ const models=[...new Set([manualSelection.model,g.configured?.model,current.model,...(g.models||[]),...(g.recentModels||[]).map(c=>c.model)].filter(Boolean))];
+  const efforts=[...new Set(['default','none','minimal','low','medium','high','xhigh','max','ultra',manualSelection.effort,...(g.recentModels||[]).map(c=>c.effort)].filter(Boolean))];
+ for(const [id,values,selected] of [['guardManualModel',models,manualSelection.model],['guardManualEffort',efforts,manualSelection.effort]]) {
+  const select=$(id);if([...select.options].map(o=>o.value).join('\n')!==values.join('\n'))select.replaceChildren(...values.map(value=>new Option(value==='default'?'default（不指定）':value,value)));
+  select.value=selected;select.disabled=busy||!!g.error||!current.providerId;
+ }
+ $('guardUseConfig').disabled=busy||!!g.error||!g.configured?.model;
+ $('guardUseRecent').disabled=busy||!!g.error||current.modelSource!=='request';
+ const source=manualSelection.source==='config'?'配置文件默认值':manualSelection.source==='request'?'最近实际请求':'手动选择';
+ $('guardSelectionNote').textContent='所选来源：'+source+'。仅用于手动检测，不更改 Codex 模型，也不改变自动保护检查的模型。管理页无法识别 Codex 的前台会话，请核对所选模型。';
 }
 function renderNavigation() {
  const hasGuard=!!state?.guard, hasHistory=Array.isArray(state?.guard?.history);
@@ -198,33 +216,39 @@ function renderGuard() {
  const g=state.guard; $('guardPanel').hidden=!g; $('drawerGuard').hidden=!g; $('guardColumn').hidden=!g;
  renderGuardHistory();
  if(!g)return;
+ renderManualSelection();
  const current=g.current || {}, provider=state.providers.find(p=>p.id===current.providerId)||state.providers.find(p=>p.current), id=provider?.id, policy=guardPolicy(id), record=guardRecordForCurrent();
- const supported=Array.isArray(g.models)&&g.models.includes(current.model), checking=(record&&['checking','suspect'].includes(record.status))||(current.key&&(g.jobs||[]).includes(current.key))||(g.checking||[]).some(r=>current.key?r.key===current.key:r.providerId===id&&r.model===current.model&&(!current.effort||r.effort===current.effort));
+ const selected=manualSelection, supported=Array.isArray(g.models)&&g.models.includes(selected.model), checking=(record&&['checking','suspect'].includes(record.status))||(record?.key&&(g.jobs||[]).includes(record.key))||[...(g.checking||[]),...(g.manualJobs||[])].some(r=>r.providerId===id&&r.model===selected.model&&r.effort===selected.effort);
  const needsRecheck=record?.status==='passed'&&record.cacheValid===false;
- const status=policy.enabled ? (record?.status==='blocked'?'blocked':current.available===false?'unverified':needsRecheck?'recheck':record?.status || (current.model&&!supported?'unsupported':'unchecked')) : 'disabled';
+ const status=policy.enabled ? (record?.status==='blocked'?'blocked':current.available===false?'unverified':needsRecheck?'recheck':record?.status || (selected.model&&!supported?'unsupported':'unchecked')) : 'disabled';
  $('guardBadge').textContent=g.error?'保护配置异常':checking?(record?.status==='blocked'?'重新检测中 · 保持锁定':record?.status==='suspect'?guardLabels.suspect:'检测中'):guardLabels[status] || '等待检测'; $('guardBadge').className='guard-state '+(g.error?'bad':guardTone(status));
  $('guardEnabled').setAttribute('aria-checked',String(policy.enabled)); $('guardEnabled').disabled=busy||!!g.error||!id||(!provider?.editable&&!policy.enabled);
  $('guardProvider').textContent=provider?.name || '未选择供应商'; $('guardModel').textContent=current.model ? current.model+' · '+(current.effort||'default') : '等待模型请求';
+ $('guardModelLabel').textContent='当前供应商 · '+(current.modelSource==='request'?'最近请求模型':current.modelSource==='config'?'Codex 配置默认模型':'请求模型来源');
+ $('guardModelSource').textContent=current.modelSource==='request' ? '来源：代理捕获的最近请求 · '+guardTime(current.modelObservedAt)+'；不代表当前前台会话。' : current.modelSource==='config' ? '尚未捕获请求；当前显示 Codex 配置文件的默认值，不代表会话覆盖值。' : '尚未捕获请求，也未读取到配置模型。';
  $('guardCurrentDetail').textContent=policy.enabled ? '已开启 · '+(policy.ttlSeconds===0?'每次请求前检测':'检测结果最多复用 '+(policy.ttlSeconds/60)+' 分钟')+' · 完整校验后交付响应' : '此供应商未开启保护；历史过滤仍按独立规则执行。';
- $('guardVerdict').textContent=record ? (guardLabels[record.status]||record.status) : current.model&&!supported?'模型尚不支持':'尚无检测记录';
+ $('guardVerdictLabel').textContent='所选模型最近检测 · '+selected.model+' · '+selected.effort;
+ $('guardVerdict').textContent=record ? (guardLabels[record.status]||record.status) : selected.model&&!supported?'模型尚不支持':'尚无检测记录';
  const details=[];
+  const progress=(g.checking||[]).find(r=>r.providerId===id&&r.model===selected.model&&r.effort===selected.effort)?.progress;
+  if(checking&&progress)details.push('第 '+progress.round+' 轮 · 正在采集第 '+progress.sample+'/'+progress.samplesPerRound+' 个样本（最多等待 180 秒）');
  if(record?.prediction) details.push('最相近指纹：'+record.prediction);
  if(Number.isFinite(record?.score)) details.push('匹配分 '+Number(record.score).toFixed(3)+'（非概率）');
  if(Number.isFinite(record?.rounds)&&record.rounds>0) details.push('已完成 '+record.rounds+' 轮');
- $('guardEvidence').textContent=details.join(' · ') || record?.reason || (current.model&&!supported ? '参考库尚未收录 '+current.model+'；开启保护时会拦截，不能判为通过。' : '开启保护后，在项目请求发送前进行独立检测。');
+ $('guardEvidence').textContent=details.join(' · ') || record?.reason || (selected.model&&!supported ? '参考库尚未收录 '+selected.model+'；开启保护时会拦截，不能判为通过。' : '此供应商当前路由尚无所选模型的检测记录。');
  const times=[]; if(record?.checkedAt) times.push('上次检测 '+guardTime(record.checkedAt)); if(needsRecheck)times.push(record.cacheReason||'下次请求需要重新检测');else if(record?.status==='passed'&&record.expiresAt) times.push('结果到期 '+guardTime(record.expiresAt));
  $('guardCheckedAt').textContent=times.join(' · ');
  const alert = g.error ? '保护配置无法读取或验证，请先处理以下错误。受保护的请求不会放行。\n'+g.error : record?.status==='blocked' ? (policy.enabled?'已阻止此模型继续返回项目内容。':'当前保护已关闭，保留的锁定记录不会拦截请求。')+'\n'+(record.reason||'检测发现模型不一致。')
-  : policy.enabled&&!supported&&current.model ? '此模型尚未被参考库收录，保护已启用时会拒绝请求。可在 CC Switch/Codex 选择支持的模型后重新检测。'
+  : policy.enabled&&!supported&&selected.model ? '所选模型尚未被参考库收录；实际请求使用该模型时，保护会拒绝放行。'
   : policy.enabled&&current.available===false ? (current.reason||'当前转发路径无法进行独立检测，受保护的请求将被拦截。')
   : record&&['unverified','unsupported','suspect'].includes(record.status) ? (record.reason||guardLabels[record.status]) : '';
  $('guardAlert').textContent=alert; $('guardAlert').hidden=!alert; $('guardAlert').className='guard-banner'+(record?.status==='blocked'||g.error?'':' warn');
  selectTtl('guardTtl',policy.ttlSeconds); $('guardTtl').disabled=busy||!!g.error||!id||!provider?.editable;
- $('guardTest').disabled=busy||checking||!!g.error||current.available!==true||!id||!current.model||!supported;
- $('guardTest').textContent=checking?'正在检测，请稍候…':'立即检测当前模型';
+ $('guardTest').disabled=busy||checking||!!g.error||current.available!==true||!id||!selected.model||!supported;
+ $('guardTest').textContent=checking?'正在检测，请稍候…':record?.cooldownActive?'立即手动重试':'立即检测所选模型';
  $('guardReset').hidden=record?.status!=='blocked';$('guardReset').disabled=busy||!!g.error||checking||record?.status!=='blocked';
  $('saveGuard').disabled=!!g.error;$('drawerGuardEnabled').disabled=!!g.error;$('drawerGuardTtl').disabled=!!g.error;
- $('guardActionNote').textContent=current.available===false ? (current.reason||'需先接入 CC Switch 当前供应商，才能独立检测。') : !current.model ? '等待请求以确定模型，之后可以发起检测。' : !supported ? '支持模型：'+(g.models||[]).join('、') : policy.enabled ? '检测期间原项目请求会等待；发生异常时不会把待校验的输出送入项目。' : '可先手动检测，再决定是否开启保护。保护关闭时，检测结果不会自动拦截项目请求。';
+ $('guardActionNote').textContent=current.available===false ? (current.reason||'需先接入 CC Switch 当前供应商，才能独立检测。') : !selected.model ? '请选择手动检测模型。' : !supported ? '参考库支持模型：'+(g.models||[]).join('、') : checking ? '正在逐个采样；慢速推理可能暂时没有正文，请等待。整次最多 10 分钟，不会自动重复本轮检测。' : record?.cooldownActive ? '自动检测冷却至 '+guardTime(record.retryAt)+'，期间受保护请求继续被拦截，不产生重复检测。手动重试会立即产生上游计费请求。' : policy.enabled ? '检测期间原项目请求会等待；发生异常时不会把待校验的输出送入项目。手动选择的模型仅用于此次检测。' : '可先手动检测，再决定是否开启保护。保护关闭时，检测结果不会自动拦截项目请求。';
  const records=guardRecords().filter(r=>r.status==='blocked'), frag=document.createDocumentFragment();
  $('guardLocksSection').hidden=!records.length;$('guardLocksCount').textContent=records.length+' 项';
  for(const r of records) {
@@ -309,7 +333,11 @@ $('resetRule').addEventListener('click',()=>changeRule(selectedId,null,editRevis
 $('saveGuard').addEventListener('click',()=>changeGuard(selectedId,{enabled:$('drawerGuardEnabled').checked,ttlSeconds:Number($('drawerGuardTtl').value)},true,editGuardRevision));
 $('guardEnabled').addEventListener('click',()=>{ const id=state?.guard?.current?.providerId||state?.providers.find(p=>p.current)?.id;if(id)changeGuard(id,{...guardPolicy(id),enabled:!guardPolicy(id).enabled}); });
 $('guardTtl').addEventListener('change',()=>{ const id=state?.guard?.current?.providerId||state?.providers.find(p=>p.current)?.id;if(id)changeGuard(id,{...guardPolicy(id),ttlSeconds:Number($('guardTtl').value)}); });
-$('guardTest').addEventListener('click',()=>{const c=state?.guard?.current;if(c)guardAction('/guard/check','POST',{providerId:c.providerId,model:c.model,effort:c.effort},'检测已提交，请等待结果；本次会产生上游计费请求');});
+$('guardTest').addEventListener('click',()=>{if(manualSelection)guardAction('/guard/check','POST',{providerId:manualSelection.providerId,routeRevision:manualSelection.routeRevision,model:manualSelection.model,effort:manualSelection.effort},'检测已提交，请等待结果；本次会产生上游计费请求');});
+$('guardManualModel').addEventListener('change',()=>{const model=$('guardManualModel').value,g=state.guard,matching=(g.recentModels||[]).find(r=>r.model===model);manualSelection={...manualSelection,model,effort:matching?.effort||(model===g.configured?.model?g.configured.effort:'default')||'default',source:'manual'};renderGuard();freezeExpiredControls();});
+$('guardManualEffort').addEventListener('change',()=>{manualSelection={...manualSelection,effort:$('guardManualEffort').value,source:'manual'};renderGuard();freezeExpiredControls();});
+$('guardUseConfig').addEventListener('click',()=>{const configured=state?.guard?.configured;if(configured?.model){manualSelection={providerId:state.guard.current.providerId,routeRevision:state.guard.current.routeRevision,...configured,source:'config'};renderGuard();freezeExpiredControls();}});
+$('guardUseRecent').addEventListener('click',()=>{const current=state?.guard?.current;if(current?.modelSource==='request'){manualSelection={providerId:current.providerId,routeRevision:current.routeRevision,model:current.model,effort:current.effort,source:'request'};renderGuard();freezeExpiredControls();}});
 $('guardReset').addEventListener('click',()=>clearGuard(guardRecordForCurrent()?.key));
 $('currentHistoryEnabled').addEventListener('click',()=>{const current=state?.providers.find(p=>p.current);if(current)changeRule(current.id,{...current.rule,historyFilter:!current.rule.historyFilter},state.revision);});
 function changeHistoryPage(offset) {historyOffset=Math.max(0,offset);historyAnchor=null;renderGuardHistory();$('guardHistoryViewport').scrollTop=0;}
