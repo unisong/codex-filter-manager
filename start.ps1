@@ -166,7 +166,7 @@ try {
     }
     $dashboardUrl = $service.filterOrigin + '/__codex_filter__/ui'
     if ($CheckOnly) { Write-Output $dashboardUrl }
-    else { Start-Process -FilePath $dashboardUrl -WindowStyle Hidden }
+    else { Start-Process -FilePath $dashboardUrl }
 } catch {
     if ($Console -or $CheckOnly -or $Action -ne 'Start') { Write-Error $_; exit 1 }
     Add-Type -AssemblyName PresentationFramework
