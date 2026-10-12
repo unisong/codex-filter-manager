@@ -456,7 +456,11 @@ with sync_playwright() as p:
     # Read-only stale credentials recover at most once without replaying writes.
     before_loads = ui_loads
     server_token = "restarted-service-1"
-    page.locator("#refresh").click()
+    # The old DOM already has this version and a hidden error banner. Wait for
+    # the recovery navigation itself before asserting the newly loaded state.
+    with page.expect_response(lambda response: response.url.endswith('/ui') and response.request.is_navigation_request(), timeout=10000):
+        page.locator("#refresh").click()
+    page.wait_for_load_state('domcontentloaded')
     expect(page.locator("#versionBadge")).to_have_text("v" + str(filter_version))
     expect(page.locator("#error")).to_be_hidden(timeout=4000)
     assert ui_loads == before_loads + 1
