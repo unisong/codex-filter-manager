@@ -27,7 +27,7 @@
 Codex → 本机过滤服务（默认 127.0.0.1:18181）→ CC Switch 本地代理 → 当前供应商
 ```
 
-**检测算法来源：[xqy2006/ModelTrace](https://github.com/xqy2006/ModelTrace)。** 本项目集成了该项目 MIT 许可的评分核心与参考库，在本机评分；没有连接所谓的 ModelTrace 云端检测接口。探针请求走你自己的 CC Switch 与供应商，可能计费。[检测原理与局限](MODEL-GUARD.md) · [第三方许可](THIRD_PARTY_NOTICES.md)
+**检测算法来源：[xqy2006/ModelTrace](https://github.com/xqy2006/ModelTrace)。** 本项目集成 ModelTrace 的检测算法与参考库。检测请求通过用户配置的供应商完成，样本评分在本机执行。探针请求走你自己的 CC Switch 与供应商，可能计费。[检测原理与局限](MODEL-GUARD.md) · [第三方许可](THIRD_PARTY_NOTICES.md)
 
 ## 界面预览
 
