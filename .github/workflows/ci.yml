@@ -1,0 +1,30 @@
+name: Offline checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Node tests (isolated temporary fixtures)
+        run: npm test
+      - name: Public source checks
+        run: npm run release:check
+      - name: Windows launcher checks (temporary configuration only)
+        shell: powershell
+        run: .\scripts\launcher-check.ps1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install browser test tooling
+        run: |
+          python -m pip install playwright==1.56.0
+          python -m playwright install chromium
+      - name: Browser checks (no supplier requests)
+        run: |
+          python dashboard-check.py
+          python guard-dashboard-check.py

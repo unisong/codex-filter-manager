@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Codex 过滤管理</title>
+<link rel="icon" type="image/svg+xml" href="/__codex_filter__/favicon.svg">
+<style>
+:root{color-scheme:dark;--bg:#11171c;--panel:#1a2229;--line:#2b3740;--text:#e6eef3;--muted:#96a8b5;--accent:#7fe0c5;--warn:#edc078}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.65 "Segoe UI","Microsoft YaHei",sans-serif}button,input,select{font:inherit}button{cursor:pointer}button:disabled{cursor:not-allowed;opacity:.45}a{color:var(--accent)}button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:3px}[hidden]{display:none!important}
+.shell{display:grid;grid-template-columns:220px minmax(0,1fr);min-height:100vh}.side{padding:34px 24px;border-right:1px solid var(--line);background:#151c22;display:flex;flex-direction:column;position:sticky;top:0;height:100vh}.brand{font-size:18px;font-weight:650;letter-spacing:.3px}.brandmark{display:inline-grid;place-items:center;background:#24473f;color:var(--accent);width:32px;height:32px;border-radius:9px;margin-right:9px}.side-label{color:var(--muted);font-size:12px;margin:6px 0 42px 42px}.navitem{padding:12px 14px;border:1px solid #345249;background:#20352f;color:#b7f2df;border-radius:8px;font-weight:600}.side-note{margin-top:auto;color:var(--muted);font-size:12px;line-height:1.8}.side-note strong{display:block;font-size:13px;color:#c2d0da;margin-bottom:8px}.main{padding:38px 44px 30px;max-width:1560px;width:100%;margin:auto}.eyebrow{color:var(--accent);font-size:11px;letter-spacing:2px;font-weight:650}.top{display:flex;justify-content:space-between;align-items:center;gap:20px}h1{font-size:29px;letter-spacing:-.6px;line-height:1.4;margin:8px 0}h2{font-size:18px;margin:0}p{margin:0}.subtitle{color:var(--muted)}.button{border:1px solid var(--line);background:#202c35;color:var(--text);border-radius:7px;padding:9px 16px;white-space:nowrap}.button:hover{background:#2b3b47}.button.primary{background:var(--accent);color:#112d25;border-color:var(--accent);font-weight:650}.button.small{padding:5px 12px;font-size:12px}.banner{margin-top:18px;padding:12px 16px;border:1px solid #634d30;background:#322a20;color:#f1ca91;border-radius:8px;white-space:pre-wrap}.metrics{display:grid;grid-template-columns:1.5fr repeat(3,1fr);gap:14px;margin:28px 0}.metric{padding:20px 22px;background:var(--panel);border:1px solid var(--line);border-radius:10px;min-width:0}.metric.current{border-color:#3a6055;background:linear-gradient(115deg,#1d3530,#1a252b)}.metric .label{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:7px}.dot{display:inline-block;height:7px;width:7px;background:var(--accent);border-radius:100%}.number{display:block;font-size:28px;font-weight:650;line-height:1.4;margin:9px 0 4px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.number.provider{font-size:21px}.metric small{color:var(--muted);font-size:11px}.current small{color:#a9cebf}.panel{background:var(--panel);border:1px solid var(--line);border-radius:11px;overflow:hidden}.panel-head{padding:22px 24px 18px;display:flex;align-items:center;justify-content:space-between;gap:16px}.panel-head .subtitle{font-size:12px;margin-top:4px}.search{background:#121a21;color:var(--text);border:1px solid var(--line);border-radius:7px;padding:9px 13px;min-width:260px;width:30%}.toolbar{display:flex;justify-content:space-between;align-items:center;padding:0 24px 16px;gap:12px}.tabs{display:flex;gap:6px}.tab{background:transparent;color:var(--muted);border:1px solid transparent;padding:6px 12px;border-radius:6px;font-size:12px}.tab.active{background:#293a43;color:#e1ecef;border-color:#3b4d56}.count{color:var(--muted);font-size:12px}.table-wrap{max-height:540px;overflow:auto}table{width:100%;border-collapse:collapse;text-align:left;table-layout:fixed}th{font-size:11px;letter-spacing:.3px;font-weight:500;color:var(--muted);background:#182027;position:sticky;top:0;z-index:1}th,td{padding:13px 24px;border-top:1px solid var(--line)}th:first-child{width:48%}th:nth-child(2){width:20%}th:nth-child(3){width:17%}th:last-child{width:15%;text-align:right}td:last-child{text-align:right}tbody tr:hover{background:#202b33}tbody tr.selected{background:#23372f}.provider-name{font-weight:600;display:flex;align-items:center;gap:9px;flex-wrap:wrap;overflow-wrap:anywhere}.endpoint{font-size:11px;color:var(--muted);overflow-wrap:anywhere;margin-top:3px}.pill{display:inline-block;font-size:10px;padding:2px 7px;line-height:1.6;border:1px solid #3a4b57;color:#b6c7d2;border-radius:5px;font-weight:400}.pill.green{color:#9be8cc;background:#254239;border-color:#395a4d}.pill.amber{color:#edc078;background:#3a3021;border-color:#68532f}.rule-label{font-size:12px;color:#cad6de}.rule-source{font-size:10px;color:var(--muted);margin-top:2px}.switch{border:1px solid #52606c;background:#36424c;border-radius:18px;width:38px;height:22px;padding:2px;position:relative;vertical-align:middle}.switch:before{content:"";display:block;background:#e3e9ed;width:16px;height:16px;border-radius:50%;transition:transform .15s}.switch[aria-checked=true]{background:#4aac90;border-color:#64caae}.switch[aria-checked=true]:before{transform:translateX(14px);background:#102a24}.switch-label{display:inline-block;margin-left:8px;font-size:11px;color:var(--muted)}.empty{text-align:center;padding:50px;color:var(--muted)}.bottom{display:grid;grid-template-columns:1.2fr 1fr;gap:16px;margin-top:18px}.note-card{border:1px solid var(--line);border-radius:9px;padding:19px 22px;display:flex;justify-content:space-between;gap:20px;align-items:center}.note-card h3{font-size:13px;margin:0 0 5px}.note-card p{font-size:12px;color:var(--muted)}.footer{display:flex;justify-content:space-between;color:#758894;font-size:11px;margin:20px 2px}.status-live{color:#a9d8c8}.drawer{position:fixed;inset:0;background:#0008;z-index:5;display:flex;justify-content:flex-end}.drawer-panel{width:460px;max-width:100%;background:#18222a;border-left:1px solid var(--line);padding:30px;overflow:auto;box-shadow:-10px 0 50px #0004}.drawer-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}.drawer-title{font-size:20px;margin:6px 0;overflow-wrap:anywhere}.settings{margin:26px 0}.setting{display:flex;gap:14px;align-items:flex-start;padding:17px 0;border-bottom:1px solid var(--line)}.setting input{width:17px;height:17px;margin:4px 0;accent-color:var(--accent)}.setting strong{font-size:14px;font-weight:600}.setting small{display:block;color:var(--muted);line-height:1.7;margin-top:6px}.help{color:#b9c9d3;font-size:12px;padding:14px;border-radius:7px;background:#23313a;margin-top:22px}.actions{display:flex;gap:10px;margin-top:26px;flex-wrap:wrap}.toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%);max-width:90vw;background:#dcf4eb;color:#173e32;border:1px solid #93d2b7;box-shadow:0 5px 25px #0006;padding:12px 22px;border-radius:9px;z-index:10}.toast.error{background:#f2dcc4;color:#5b2c16}.busy{pointer-events:none;opacity:.65}
+@media(max-width:1100px){.shell{grid-template-columns:175px minmax(0,1fr)}.side{padding:26px 15px}.brand{font-size:15px}.main{padding:28px 24px}.metric{padding:16px}.metrics{gap:9px}.number.provider{font-size:18px}th,td{padding:13px 16px}.switch-label{display:none}.search{min-width:210px}.bottom{grid-template-columns:1fr}}
+@media(max-width:760px){.shell{display:block}.side{height:auto;position:static;padding:16px 20px;border-right:0;border-bottom:1px solid var(--line)}.side-label,.navitem,.side-note{display:none}.brand{font-size:17px}.main{padding:24px 16px}.metrics{grid-template-columns:1fr 1fr;margin:22px 0}.top{align-items:flex-start}h1{font-size:25px}.top .button{padding:7px 10px}.panel-head{align-items:flex-start;flex-direction:column;padding:18px 16px}.search{width:100%;min-width:0}.toolbar{padding:0 12px 14px}.tab{padding:6px 9px}.table-wrap{max-height:480px}th,td{padding:13px 12px}th:first-child{width:53%}th:nth-child(2),td:nth-child(2){display:none}th:nth-child(3){width:20%}th:last-child{width:27%}.footer{gap:12px}.note-card{padding:17px}.drawer-panel{padding:24px}.subtitle{font-size:12px}}
+.version-badge{display:inline-block;vertical-align:middle;margin-left:10px;border:1px solid #3a514a;border-radius:5px;padding:2px 8px;color:#b7f2df;background:#20352f;letter-spacing:0;font-size:11px;line-height:1.6;font-variant-numeric:tabular-nums}
+th:first-child{width:37%}th:nth-child(2){width:18%}th:nth-child(3){width:16%}th:nth-child(4){width:17%}th:last-child{width:12%}.guard-cell .switch-label{margin-left:6px}.guard-cell .rule-source{margin-top:5px}.provider-guard-pill{font-size:9px;line-height:1.6;padding:1px 6px}.guard-heading h2{line-height:1.5}
+.guard-panel{margin-bottom:22px;border-color:#3a514a}.guard-panel .panel-head{align-items:flex-start}.guard-intro{max-width:790px}.guard-controls{display:flex;gap:12px;align-items:center;white-space:nowrap}.guard-controls label{font-size:12px;color:#c9d8df}.guard-body{padding:0 24px 22px}.guard-overview{display:grid;grid-template-columns:1fr 1fr;gap:14px}.guard-summary{border:1px solid var(--line);background:#151e25;border-radius:8px;padding:16px 18px;min-width:0}.guard-summary .label{color:var(--muted);font-size:11px;margin-bottom:8px}.guard-summary strong{display:block;font-size:18px;font-weight:600;margin-bottom:6px;overflow-wrap:anywhere}.guard-detail{font-size:12px;color:var(--muted);overflow-wrap:anywhere}.guard-heading{display:flex;align-items:center;gap:9px}.guard-state{display:inline-flex;align-items:center;gap:6px;font-size:11px;border:1px solid #4a555f;padding:3px 9px;border-radius:6px;color:#b9c8d2;background:#26323b;white-space:nowrap}.guard-state.good{color:#a5ecd0;border-color:#3c6754;background:#223e32}.guard-state.warn{color:#f1ca91;border-color:#68532f;background:#3a3021}.guard-state.bad{color:#ffb8b2;border-color:#8b4646;background:#492a2b}.guard-options{display:flex;flex-wrap:wrap;align-items:center;gap:12px 22px;margin-top:17px;font-size:12px}.guard-options label{display:flex;gap:8px;align-items:center;color:#c9d8df}.guard-options select,.guard-options input{background:#121a21;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px 9px}.guard-options input[type=number]{width:86px}.guard-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:16px}.guard-actions .guard-detail{flex-basis:100%;margin-top:2px}.guard-method{margin-top:18px;color:var(--muted);font-size:11px;line-height:1.8;max-width:1020px}.guard-method summary{cursor:pointer;color:#c0d2dd;display:list-item;width:fit-content}.guard-method p{margin-top:8px}.guard-records{margin-top:18px;border-top:1px solid var(--line);padding-top:16px}.guard-records h3{font-size:12px;color:#c9d8df;margin:0 0 10px}.guard-record{display:grid;grid-template-columns:minmax(130px,1fr) minmax(200px,2fr) auto;align-items:start;gap:12px;padding:10px 0;border-bottom:1px solid #26343d;font-size:12px}.guard-record:last-child{border-bottom:0}.guard-record-title{font-weight:600;overflow-wrap:anywhere}.guard-record-meta{font-size:10px;color:var(--muted);overflow-wrap:anywhere}.guard-record-reason{color:#b7c8d4;overflow-wrap:anywhere}.guard-model{font-size:13px!important;font-weight:500!important;color:#b7cad5}.guard-banner{margin:0 0 16px;border:1px solid #8b4646;background:#3b2328;color:#ffc3ba;border-radius:7px;padding:11px 14px;font-size:12px;white-space:pre-wrap}.guard-banner.warn{border-color:#68532f;background:#30291f;color:#f1ca91}.guard-empty{color:var(--muted);font-size:12px;padding:4px 0}.guard-switches{display:flex;flex-direction:column;gap:10px;padding-top:2px}.guard-config-note{font-size:11px;color:var(--muted)}
+@media(max-width:1100px){.guard-overview{grid-template-columns:1fr 1fr}.guard-body{padding:0 20px 20px}.guard-controls{gap:8px}.guard-intro{max-width:620px}}
+@media(max-width:760px){.guard-overview{grid-template-columns:1fr}.guard-panel .panel-head{gap:14px}.guard-controls{width:100%;justify-content:space-between}.guard-body{padding:0 16px 18px}.guard-record{grid-template-columns:1fr auto;gap:8px}.guard-record-reason{grid-column:1/-1;grid-row:2}.guard-heading{align-items:flex-start;flex-wrap:wrap}.guard-options{gap:11px}.guard-options label{flex-wrap:wrap}.guard-actions .button{flex:1}.guard-summary{padding:14px}.version-badge{margin-left:5px}.guard-switches{width:100%}}
+@media(max-width:760px){th:first-child{width:40%}th:nth-child(3){width:18%}th:nth-child(4){width:22%}th:last-child{width:20%}th,td{padding:12px 9px}th{font-size:10px}.table-wrap .button.small{padding:5px 8px}.guard-cell .rule-source{font-size:9px}.guard-heading h2{font-size:17px}}
+.guard-history-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 12px;margin-bottom:8px}.guard-history-head h3{margin:0}.guard-history-controls{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}.guard-history-note{margin-bottom:10px}
+.guard-history-details{margin-top:5px;font-size:11px}.guard-history-details summary{width:fit-content;cursor:pointer;color:var(--muted)}.guard-history-details summary:hover{color:var(--accent)}.guard-history-details summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}.guard-history-details p{margin-top:6px;white-space:pre-wrap;overflow-wrap:anywhere}
+.main{margin:0 auto}.metrics{grid-template-columns:minmax(290px,1.6fr) repeat(3,minmax(0,1fr))}.current-switches{display:flex;flex-wrap:wrap;gap:12px 22px;margin-top:15px;padding-top:13px;border-top:1px solid #345249}.current-switch{display:flex;align-items:center;gap:10px;font-size:12px;color:#d0e8de}.view-tabs{position:sticky;top:0;z-index:3;display:flex;gap:6px;padding:12px 0;background:var(--bg);margin:0 0 18px;border-bottom:1px solid var(--line)}.view-tab{display:flex;align-items:center;gap:7px;border:1px solid transparent;background:transparent;border-radius:7px;padding:10px 18px;color:var(--muted);font-weight:600}.view-tab:hover{color:var(--text);background:#202c35}.view-tab[aria-selected=true]{color:#b7f2df;border-color:#345249;background:#20352f}.view-count{font-weight:400;font-size:11px;padding:1px 6px;border-radius:4px;background:#293a43;color:#b9c8d2}.view-count.locked{color:#ffb8b2;background:#492a2b}.view-panel{scroll-margin-top:80px}.view-panel:focus{outline:none}.history-panel-body{padding:0 24px 22px}.history-panel .guard-history-head{margin:0}.history-panel .guard-history-head h2{font-size:18px}.history-viewport{max-height:55vh;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:0 8px 0 0}.history-viewport:focus-visible{outline:2px solid var(--accent);outline-offset:3px}.history-panel .guard-history-controls{align-items:center;justify-content:space-between;gap:10px}.history-pagination{display:flex;align-items:center;gap:10px}.history-panel .guard-history-note{margin-bottom:14px}.guard-panel{margin-bottom:0}
+@media(max-width:1100px){.metrics{grid-template-columns:1.4fr 1fr}.current-switches{gap:10px 18px}.history-panel-body{padding:0 20px 20px}}
+@media(max-width:760px){.metrics{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.metric.current{grid-column:1/-1}.metrics .metric:not(.current){padding:12px 10px}.metric:not(.current) .number{font-size:23px}.metric:not(.current) .label{font-size:10px}.current-switches{justify-content:space-between}.view-tabs{gap:3px;margin-bottom:14px;padding:9px 0}.view-tab{flex:1;justify-content:center;flex-wrap:wrap;gap:4px;padding:8px 5px;font-size:12px}.view-count{font-size:10px}.history-panel-body{padding:0 16px 18px}.history-pagination{gap:6px}.history-panel .guard-history-controls{flex-wrap:wrap}.history-viewport{max-height:55vh}.history-panel .panel-head{flex-direction:row;align-items:center;flex-wrap:wrap}}
+</style>
+<style>
+.top-actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:12px}.source-links{display:flex;flex-wrap:wrap;gap:12px}.github-link{display:inline-flex;align-items:center;gap:6px;text-decoration:none;color:var(--muted);font-size:12px;white-space:nowrap}.github-link:hover{color:var(--accent)}.github-link svg{width:17px;height:17px;fill:currentColor;flex:none}.github-link:focus-visible{outline:2px solid var(--accent);outline-offset:4px}.brandmark{background:transparent;padding:0}.brandmark img{width:32px;height:32px;display:block}@media(max-width:760px){.top{flex-wrap:wrap}.top-actions{width:100%;justify-content:space-between}.source-links{gap:14px}}
+</style>
+</head>
+<body>
+<div class="shell">
+ <aside class="side"><div class="brand"><span class="brandmark"><img src="/__codex_filter__/favicon.svg" alt=""></span>Codex 过滤</div><div class="side-label">本地管理面板</div><div class="side-note"><strong>由你掌控每个供应商</strong>历史过滤与模型保护<br>可分别开启或关闭。<br><br>切换实际供应商，请在<br>CC Switch 中操作。</div></aside>
+ <main class="main">
+  <header class="top"><div><div class="eyebrow">LOCAL CONTROL <span class="version-badge" id="versionBadge">版本加载中</span></div><h1>过滤与模型检测</h1><p class="subtitle">管理历史兼容规则，在模型响应进入项目之前检查异常。</p></div><div class="top-actions"><div class="source-links"><a class="github-link" href="https://github.com/unisong/codex-filter-manager" target="_blank" rel="noopener noreferrer" aria-label="在 GitHub 查看本项目"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .5a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2.2c-3.3.7-4-1.4-4-1.4-.5-1.4-1.3-1.8-1.3-1.8-1.1-.8.1-.8.1-.8 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-6a4.7 4.7 0 0 1 1.3-3.2c-.1-.3-.6-1.6.1-3.3 0 0 1-.3 3.3 1.2a11.4 11.4 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.7 1.7.2 3 .1 3.3a4.7 4.7 0 0 1 1.3 3.2c0 4.7-2.8 5.7-5.5 6 .4.4.8 1.1.8 2.2v3.4c0 .3.2.7.8.6A12 12 0 0 0 12 .5Z"/></svg>本项目</a><a class="github-link" href="https://github.com/xqy2006/ModelTrace" target="_blank" rel="noopener noreferrer" aria-label="在 GitHub 查看检测算法来源 ModelTrace"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .5a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2.2c-3.3.7-4-1.4-4-1.4-.5-1.4-1.3-1.8-1.3-1.8-1.1-.8.1-.8.1-.8 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-6a4.7 4.7 0 0 1 1.3-3.2c-.1-.3-.6-1.6.1-3.3 0 0 1-.3 3.3 1.2a11.4 11.4 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.7 1.7.2 3 .1 3.3a4.7 4.7 0 0 1 1.3 3.2c0 4.7-2.8 5.7-5.5 6 .4.4.8 1.1.8 2.2v3.4c0 .3.2.7.8.6A12 12 0 0 0 12 .5Z"/></svg>ModelTrace</a></div><button class="button" id="refresh">↻ 刷新列表</button></div></header>
+  <div class="banner" id="error" role="alert" hidden></div><button class="button" id="reconnect" style="margin-top:10px" hidden>重新连接管理页</button><div class="banner" id="warning" hidden></div>
+  <section class="metrics" aria-label="服务概览">
+   <div class="metric current"><div class="label"><span class="dot" id="dot"></span>当前供应商</div><strong class="number provider" id="current">正在连接…</strong><small id="currentMode">读取 CC Switch 配置</small><div class="current-switches"><div class="current-switch"><label for="currentHistoryEnabled">历史过滤</label><button class="switch" id="currentHistoryEnabled" type="button" role="switch" aria-label="当前供应商历史过滤" aria-checked="false" disabled></button></div><div class="current-switch" id="currentGuardControl"><label for="guardEnabled">模型保护</label><button class="switch" id="guardEnabled" type="button" role="switch" aria-label="降智检测与切断保护" aria-checked="false" disabled></button></div></div></div>
+   <div class="metric"><div class="label">已启用历史过滤</div><strong class="number" id="enabled">—</strong><small id="total">供应商</small></div>
+   <div class="metric"><div class="label">已处理历史请求</div><strong class="number" id="filtered">—</strong><small>本次服务启动以来</small></div>
+   <div class="metric"><div class="label">已移除旧密文块</div><strong class="number" id="encrypted">—</strong><small>保留可读对话与工具结果</small></div>
+  </section>
+  <nav class="view-tabs" role="tablist" aria-label="管理分区"><button class="view-tab" id="viewProviders" type="button" role="tab" data-view="providers" aria-selected="true" aria-controls="providersView">供应商管理</button><button class="view-tab" id="viewProtection" type="button" role="tab" data-view="protection" aria-selected="false" aria-controls="protectionView" tabindex="-1">模型保护<span class="view-count locked" id="protectionTabCount" hidden></span></button><button class="view-tab" id="viewHistory" type="button" role="tab" data-view="history" aria-selected="false" aria-controls="historyView" tabindex="-1">检测记录<span class="view-count" id="historyTabCount">0</span></button></nav>
+  <div class="view-panel" id="protectionView" role="tabpanel" aria-labelledby="viewProtection" tabindex="0" hidden>
+  <section class="panel guard-panel" aria-label="降智检测与切断保护" id="guardPanel">
+   <div class="panel-head"><div class="guard-intro"><div class="guard-heading"><h2>降智检测与切断保护</h2><span class="guard-state" id="guardBadge">读取状态</span></div><p class="subtitle">检查返回模型与行为指纹。发现异常后锁定该供应商的模型，待你重新检测。</p></div></div>
+   <div class="guard-body">
+    <div class="guard-banner" id="guardAlert" role="status" hidden></div>
+    <div class="guard-overview">
+     <div class="guard-summary"><div class="label">当前供应商 · 模型</div><strong id="guardProvider">等待供应商信息</strong><strong class="guard-model" id="guardModel">等待模型请求</strong><p class="guard-detail" id="guardCurrentDetail">读取保护状态…</p></div>
+     <div class="guard-summary"><div class="label">最近检测</div><strong id="guardVerdict">尚无检测记录</strong><p class="guard-detail" id="guardEvidence">启用后将检查实际请求的模型。</p><p class="guard-detail" id="guardCheckedAt"></p></div>
+    </div>
+    <div class="guard-options" id="guardOptions"><label for="guardTtl">检测间隔 <select id="guardTtl" disabled><option value="0">每次请求</option><option value="60">1 分钟</option><option value="300">5 分钟</option><option value="600">10 分钟（默认）</option><option value="1800">30 分钟</option><option value="3600">60 分钟</option></select></label><span class="guard-config-note">通过后按间隔复用结果；切换模型后重新检测。</span></div>
+    <div class="guard-actions"><button class="button primary" id="guardTest" disabled>立即检测当前模型</button><button class="button" id="guardReset" disabled hidden>清除锁定，等待重新检测</button><span class="guard-detail" id="guardActionNote">检测使用独立请求，不把题目或结果写入项目对话。</span></div>
+    <p class="guard-detail" style="margin-top:14px">每次检测通常消耗 3 次独立请求，疑似不一致时增加至 6 次，按上游计费。保护开启时，项目响应须完整校验后才会显示，期间没有逐字输出。</p>
+    <details class="guard-method"><summary>检测方式与边界</summary><p id="guardMethodDetail">采用 ModelTrace 行为指纹和返回模型一致性检查。指纹匹配分不是可信概率，也不能证明推理质量或代码正确性。暂未收录的模型会显示“不支持”，开启保护后会拒绝放行。</p><p>算法与参考库来自 <a href="https://github.com/xqy2006/ModelTrace" target="_blank" rel="noopener noreferrer">ModelTrace（MIT）</a>，在本机评分。检测请求发给你在 CC Switch 选择的供应商，不使用 ModelTrace 的远程检测接口。另曾评估 <a href="https://github.com/chen-006/meow-llm-detector" target="_blank" rel="noopener noreferrer">meow-llm-detector</a>，未集成其代码或数据。</p><p>疑似模型不一致经复核后，会持久锁定该供应商与模型，并丢弃受影响的项目响应。网络或检测错误记为“未能验证”，不会被标为已确认降智。清除锁定后仍需重新检测通过。</p><p>检测间隔内的上游变化可能漏检；独立检测通过也不能证明每一次项目请求使用相同模型，无法保证零污染。需要更频繁检查时可选“每次请求”。</p></details>
+    <section class="guard-records" id="guardLocksSection" aria-label="当前锁定" hidden><div class="guard-history-head"><h3>当前锁定</h3><span class="guard-record-meta" id="guardLocksCount"></span></div><div id="guardRecords"></div></section>
+   </div>
+  </section>
+  </div>
+  <div class="view-panel" id="historyView" role="tabpanel" aria-labelledby="viewHistory" tabindex="0" hidden>
+   <section class="panel history-panel" id="guardHistorySection" aria-label="历次检测记录" hidden><div class="panel-head guard-history-head"><h2>历次检测记录</h2><span class="guard-record-meta" id="guardHistoryCount"></span></div><div class="history-panel-body"><p class="guard-config-note guard-history-note" id="guardHistoryNote"></p><div class="history-viewport" id="guardHistoryViewport" role="region" aria-label="本页检测记录" tabindex="0"><div id="guardHistory"></div></div><div class="guard-history-controls"><button class="button small" id="guardHistoryLatest" type="button" disabled>回到最新</button><div class="history-pagination"><button class="button small" id="guardHistoryPrev" type="button" disabled>上一页</button><span class="guard-record-meta" id="guardHistoryPage" aria-live="polite">第 1 / 1 页</span><button class="button small" id="guardHistoryNext" type="button" disabled>下一页</button></div></div></div></section>
+  </div>
+  <div class="view-panel" id="providersView" role="tabpanel" aria-labelledby="viewProviders" tabindex="0">
+  <section class="panel" aria-label="供应商规则">
+   <div class="panel-head"><div><h2>供应商规则</h2><p class="subtitle">开启历史过滤，即可加入兼容处理；关闭即停止该项处理。</p></div><input class="search" id="search" type="search" placeholder="搜索名称或地址…" aria-label="搜索供应商"></div>
+   <div class="toolbar"><div class="tabs" aria-label="供应商筛选"><button class="tab active" data-tab="all" aria-pressed="true">全部</button><button class="tab" data-tab="enabled" aria-pressed="false">已启用</button><button class="tab" data-tab="custom" aria-pressed="false">自定义</button></div><span class="count" id="count">加载中</span></div>
+   <div class="table-wrap"><table><thead><tr><th>供应商 / 地址</th><th>兼容规则</th><th>历史过滤</th><th id="guardColumn">模型保护</th><th>操作</th></tr></thead><tbody id="providers"></tbody></table><div class="empty" id="empty" hidden>没有匹配的供应商</div></div>
+  </section>
+  <section class="bottom"><div class="note-card"><div><h3>旧模型名称兼容</h3><p>用于 CC Switch 回退后的旧会话。重新启用新版模型路由前，请关闭。</p><p id="aliasDetail">正在读取…</p></div><button id="aliases" class="switch" type="button" role="switch" aria-label="旧模型名称兼容" aria-checked="false" disabled></button></div><div class="note-card"><div><h3>新增供应商无需改脚本</h3><p>先在 CC Switch 添加 Codex 供应商，再刷新此页并开启历史过滤。自定义规则会保存在本机。</p></div></div></section>
+  </div>
+  <footer class="footer"><span id="serviceStatus">连接本地服务…</span><span id="updated">每 5 秒自动刷新状态</span></footer>
+ </main>
+</div>
+<div class="drawer" id="drawer" hidden><section class="drawer-panel" role="dialog" aria-modal="true" aria-labelledby="drawerTitle" tabindex="-1">
+ <div class="drawer-head"><span class="eyebrow">PROVIDER SETTINGS</span><button class="button small" id="closeDrawer" aria-label="关闭设置">✕</button></div>
+ <h2 class="drawer-title" id="drawerTitle"></h2><p class="endpoint" id="drawerEndpoint"></p><div class="settings">
+  <label class="setting"><input id="historyFilter" type="checkbox"><span><strong>过滤历史加密内容</strong><small>处理切换供应商后的解密失败。保留可读消息、工具结果和调用配对；移除旧加密推理状态与历史密文块。</small></span></label>
+  <label class="setting"><input id="preserveEncryptedInclude" type="checkbox"><span><strong>保留新响应的加密内容请求</strong><small>建议开启。AnyRouter、UGQAI 等上游需要此选项。它不会保留已经过滤的旧密文。</small></span></label>
+  <label class="setting"><input id="stripResponsesLiteHeader" type="checkbox"><span><strong>HUB / Lite 协议兼容</strong><small>仅在上游提示 Lite 与 reasoning.context 不兼容时开启，或沿用 HUB 的默认规则。</small></span></label>
+ </div><div class="help">历史过滤无法迁移模型之前的内部推理状态。只有密文的压缩摘要会明确报错，避免静默丢失历史。原会话文件不会被修改。</div>
+ <div class="actions"><button class="button primary" id="saveRule">保存设置</button><button class="button" id="disableRule">关闭全部兼容</button><button class="button" id="resetRule">恢复默认</button></div><p class="endpoint" style="margin-top:14px" id="drawerSource"></p>
+ <section id="drawerGuard" class="guard-records"><h3>独立的模型保护设置</h3><label class="setting"><input id="drawerGuardEnabled" type="checkbox"><span><strong>开启降智检测与切断保护</strong><small>每次检测产生 3–6 次上游计费请求。保护期间会暂存完整响应，通过检查后再送达项目；不支持或无法验证的模型将被拦截。</small></span></label><div class="guard-options"><label for="drawerGuardTtl">检测间隔 <select id="drawerGuardTtl"><option value="0">每次请求</option><option value="60">1 分钟</option><option value="300">5 分钟</option><option value="600">10 分钟（默认）</option><option value="1800">30 分钟</option><option value="3600">60 分钟</option></select></label></div><p class="guard-detail" id="drawerGuardStatus" style="margin-top:12px"></p><div class="actions"><button class="button primary" id="saveGuard">保存模型保护</button></div><p class="guard-config-note" style="margin-top:10px">与历史过滤分别保存。恢复兼容默认规则不会更改模型保护。</p></section>
+</section></div>
+<div class="toast" id="toast" role="status" hidden></div>
+<script>
+'use strict';
+const token = __FILTER_TOKEN_JSON__;
+const $ = id => document.getElementById(id);
+let state, selectedId, editRevision, editGuardRevision, tab = 'all', busy = false, loading = false, authExpired = false, toastTimer, focusBefore, lastRefresh = 0;
+let activeView='providers', historyOffset=0, historyAnchor=null;
+const historyPageSize=10;
+const expandedHistoryIds=new Set();
+const keys = ['historyFilter','preserveEncryptedInclude','stripResponsesLiteHeader'];
+const recoveryKey = 'codex-filter-auth-recovery';
+const number = n => Number(n || 0).toLocaleString('zh-CN');
+function toast(message, error = false) { clearTimeout(toastTimer); $('toast').textContent = message; $('toast').classList.toggle('error', error); $('toast').hidden = false; toastTimer = setTimeout(() => $('toast').hidden = true, 5000); }
+function freezeExpiredControls() {
+ if(!authExpired)return;
+ document.querySelectorAll('button,input,select').forEach(e=>{if(!['reconnect','closeDrawer'].includes(e.id))e.disabled=true;});
+ $('dot').style.background='var(--warn)';$('serviceStatus').textContent='管理页需要重新连接';
+}
+function recoverCredentials(method) {
+ authExpired=true;
+ $('error').textContent='服务已重启，此页面的管理凭据已失效。重新连接后可继续管理；未提交的设置不会自动保存，失败的操作不会自动重试。';
+ $('error').hidden=false;$('reconnect').hidden=false;$('dot').style.background='var(--warn)';$('serviceStatus').textContent='管理页需要重新连接';
+ freezeExpiredControls();
+ if(method!=='GET'||!$('drawer').hidden)return;
+ try {
+  const previous=Number(sessionStorage.getItem(recoveryKey)||0);
+  if(Date.now()-previous<60000)return;
+  sessionStorage.setItem(recoveryKey,String(Date.now()));
+  setTimeout(()=>location.reload(),150);
+ } catch {}
+}
+async function api(route, method = 'GET', body) {
+ if(authExpired)throw new Error('管理凭据已失效，请重新连接管理页。');
+ const r = await fetch('/__codex_filter__/api' + route, {method, headers: {'x-filter-token':token, ...(body ? {'content-type':'application/json'} : {})}, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(12000)});
+ const data = await r.json();
+ if(r.status===403&&data.error?.code==='invalid_control_token'){
+  recoverCredentials(method);
+  const error=new Error(method==='GET'?'管理凭据已失效，请重新连接管理页。':'本次操作未保存，请重新连接管理页后再试。');
+  error.code='invalid_control_token';throw error;
+ }
+ if (!r.ok) { const error=new Error(data.error?.message || '请求失败，请刷新后重试。');error.code=data.error?.code;throw error; }
+ return data;
+}
+function mode(rule) { return rule.historyFilter ? (rule.stripResponsesLiteHeader ? '历史过滤 + Lite' : '历史过滤') : rule.stripResponsesLiteHeader ? 'Lite 兼容' : '原样转发'; }
+function element(tag, text, className) { const e = document.createElement(tag); if (text != null) e.textContent = text; if (className) e.className = className; return e; }
+const guardLabels = {checking:'检测中',unchecked:'等待检测',recheck:'等待重新检测',passed:'指纹一致',suspect:'疑似不一致 · 复核中',blocked:'已切断并锁定',unverified:'未能验证',unsupported:'模型尚不支持',disabled:'未开启'};
+const guardTone = status => ['blocked'].includes(status) ? 'bad' : ['suspect','unverified','unsupported'].includes(status) ? 'warn' : status==='passed' ? 'good' : '';
+function guardPolicy(id) { return state?.guard?.providers?.[id] || {enabled:false,ttlSeconds:600}; }
+function guardRecords(id, model, effort) {
+ return (state?.guard?.records || []).filter(r=>(!id||r.providerId===id)&&(!model||r.model===model)&&(!effort||r.effort===effort)).slice().sort((a,b)=>{
+  const active = r => ['checking','suspect'].includes(r.status) ? 1 : 0;
+  return active(b)-active(a) || (Date.parse(b.checkedAt)||0)-(Date.parse(a.checkedAt)||0);
+ });
+}
+function guardTime(value) { if (!value) return '尚未检测'; const date = new Date(value); return Number.isNaN(date.getTime()) ? '时间未知' : date.toLocaleString('zh-CN',{hour12:false}); }
+function guardChecking() { return !!state?.guard?.checking?.length || !!state?.guard?.jobs?.length || (state?.guard?.records || []).some(r=>['checking','suspect'].includes(r.status)); }
+function selectTtl(id, value) { const select=$(id); const n=Number.isInteger(value)?value:600; if (![...select.options].some(o=>Number(o.value)===n)) select.add(new Option(n+' 秒',String(n))); select.value=String(n); }
+function guardRecordForCurrent() {
+ const current=state?.guard?.current;
+ if(!current?.providerId)return null;
+ if(current.key)return (state.guard.records||[]).find(r=>r.key===current.key)||null;
+ return guardRecords(current.providerId,current.model,current.effort)[0] || null;
+}
+function renderNavigation() {
+ const hasGuard=!!state?.guard, hasHistory=Array.isArray(state?.guard?.history);
+ $('currentGuardControl').hidden=!hasGuard;$('viewProtection').hidden=!hasGuard;$('viewHistory').hidden=!hasHistory;
+ if((activeView==='protection'&&!hasGuard)||(activeView==='history'&&!hasHistory))activeView='providers';
+ const lockCount=guardRecords().filter(r=>r.status==='blocked').length;
+ $('historyTabCount').textContent=String(state?.guard?.history?.length||0);
+ $('protectionTabCount').hidden=!lockCount&&!state?.guard?.error;$('protectionTabCount').textContent=state?.guard?.error?'配置异常':lockCount+' 项锁定';
+ document.querySelectorAll('[data-view]').forEach(button=>{const selected=button.dataset.view===activeView;button.setAttribute('aria-selected',String(selected));button.tabIndex=selected?0:-1;$(button.getAttribute('aria-controls')).hidden=!selected;});
+}
+function selectView(view,focus=false) {
+ activeView=view;renderNavigation();
+ const button=document.querySelector('[data-view="'+activeView+'"]');if(focus)button.focus();
+ const nav=button.closest('.view-tabs');if(nav.getBoundingClientRect().top<=0)nav.scrollIntoView({block:'start'});
+}
+function renderGuardHistory() {
+ const history=state?.guard?.history;
+ $('guardHistorySection').hidden=!Array.isArray(history);
+ if(!Array.isArray(history))return;
+ const pageCount=Math.max(1,Math.ceil(history.length/historyPageSize));
+ const anchorIndex=historyOffset>0&&historyAnchor?history.findIndex(r=>String(r.id)===historyAnchor):-1;
+ if(anchorIndex>=0)historyOffset=anchorIndex;
+ else if(historyAnchor||historyOffset>=history.length)historyOffset=Math.min(historyOffset,(pageCount-1)*historyPageSize);
+ historyOffset=Math.max(0,historyOffset);
+ const shown=history.slice(historyOffset,historyOffset+historyPageSize), frag=document.createDocumentFragment();
+ const liveIds=new Set(history.map(r=>String(r.id)));for(const id of expandedHistoryIds)if(!liveIds.has(id))expandedHistoryIds.delete(id);
+ historyAnchor=historyOffset>0&&shown.length?String(shown[0].id):null;
+ const labels={passed:'指纹一致（当次）',blocked:'当时已拦截',unverified:'当次未能验证',unsupported:'当时尚不支持'};
+ const sources={automatic:'自动检测',manual:'手动检测',response:'项目响应检查',legacy:'升级时保留'};
+ for(const r of shown){
+  const row=element('div',null,'guard-record guard-history-record'), name=element('div');row.dataset.historyId=String(r.id);
+  name.append(element('div',r.providerName||state.providers.find(p=>p.id===r.providerId)?.name||r.providerId,'guard-record-title'),element('div',r.model+' · '+(r.effort||'default'),'guard-record-meta'));
+  const info=element('div',null,'guard-record-reason'), evidence=[];
+  if(r.prediction)evidence.push('最相近 '+r.prediction);
+  if(Number.isFinite(r.score))evidence.push('匹配分 '+Number(r.score).toFixed(3)+'（非概率）');
+  if(Number.isInteger(r.rounds)&&r.rounds>0)evidence.push(r.rounds+' 轮');
+  info.append(element('div',guardTime(r.checkedAt)+' · '+(sources[r.source]||'检测'),'guard-record-meta'));
+  if(evidence.length)info.append(element('div',evidence.join(' · '),'guard-record-meta'));
+  const explanation=element('details',null,'guard-history-details');explanation.open=expandedHistoryIds.has(String(r.id));
+  explanation.addEventListener('toggle',()=>{if(!explanation.isConnected)return;if(explanation.open)expandedHistoryIds.add(String(r.id));else expandedHistoryIds.delete(String(r.id));});
+  explanation.append(element('summary','查看说明'),element('p',r.reason||labels[r.status]||'检测结束'));info.append(explanation);
+  row.append(name,info,element('span',labels[r.status]||'检测结束','guard-state '+guardTone(r.status)));frag.append(row);
+ }
+ if(!history.length)frag.append(element('p','尚无历次记录。后续检测会逐次保存；复用已通过的缓存不会新增记录。','guard-empty'));
+ $('guardHistory').replaceChildren(frag);
+ $('guardHistoryCount').textContent=history.length?'第 '+(historyOffset+1)+'–'+(historyOffset+shown.length)+' 条 · 共 '+history.length+' 条':'共 0 条';
+ $('guardHistoryNote').textContent='保留最近 '+(state.guard.historyLimit||100)+' 条，每页 '+historyPageSize+' 条。这里展示检测当时的结论，不代表当前是否锁定。';
+ $('guardHistoryPage').textContent='第 '+(Math.floor(historyOffset/historyPageSize)+1)+' / '+pageCount+' 页';
+ $('guardHistoryPrev').disabled=historyOffset===0;$('guardHistoryNext').disabled=historyOffset+historyPageSize>=history.length;$('guardHistoryLatest').disabled=historyOffset===0;
+ freezeExpiredControls();
+}
+function renderGuard() {
+ const g=state.guard; $('guardPanel').hidden=!g; $('drawerGuard').hidden=!g; $('guardColumn').hidden=!g;
+ renderGuardHistory();
+ if(!g)return;
+ const current=g.current || {}, provider=state.providers.find(p=>p.id===current.providerId)||state.providers.find(p=>p.current), id=provider?.id, policy=guardPolicy(id), record=guardRecordForCurrent();
+ const supported=Array.isArray(g.models)&&g.models.includes(current.model), checking=(record&&['checking','suspect'].includes(record.status))||(current.key&&(g.jobs||[]).includes(current.key))||(g.checking||[]).some(r=>current.key?r.key===current.key:r.providerId===id&&r.model===current.model&&(!current.effort||r.effort===current.effort));
+ const needsRecheck=record?.status==='passed'&&record.cacheValid===false;
+ const status=policy.enabled ? (record?.status==='blocked'?'blocked':current.available===false?'unverified':needsRecheck?'recheck':record?.status || (current.model&&!supported?'unsupported':'unchecked')) : 'disabled';
+ $('guardBadge').textContent=g.error?'保护配置异常':checking?(record?.status==='blocked'?'重新检测中 · 保持锁定':record?.status==='suspect'?guardLabels.suspect:'检测中'):guardLabels[status] || '等待检测'; $('guardBadge').className='guard-state '+(g.error?'bad':guardTone(status));
+ $('guardEnabled').setAttribute('aria-checked',String(policy.enabled)); $('guardEnabled').disabled=busy||!!g.error||!id||(!provider?.editable&&!policy.enabled);
+ $('guardProvider').textContent=provider?.name || '未选择供应商'; $('guardModel').textContent=current.model ? current.model+' · '+(current.effort||'default') : '等待模型请求';
+ $('guardCurrentDetail').textContent=policy.enabled ? '已开启 · '+(policy.ttlSeconds===0?'每次请求前检测':'检测结果最多复用 '+(policy.ttlSeconds/60)+' 分钟')+' · 完整校验后交付响应' : '此供应商未开启保护；历史过滤仍按独立规则执行。';
+ $('guardVerdict').textContent=record ? (guardLabels[record.status]||record.status) : current.model&&!supported?'模型尚不支持':'尚无检测记录';
+ const details=[];
+ if(record?.prediction) details.push('最相近指纹：'+record.prediction);
+ if(Number.isFinite(record?.score)) details.push('匹配分 '+Number(record.score).toFixed(3)+'（非概率）');
+ if(Number.isFinite(record?.rounds)&&record.rounds>0) details.push('已完成 '+record.rounds+' 轮');
+ $('guardEvidence').textContent=details.join(' · ') || record?.reason || (current.model&&!supported ? '参考库尚未收录 '+current.model+'；开启保护时会拦截，不能判为通过。' : '开启保护后，在项目请求发送前进行独立检测。');
+ const times=[]; if(record?.checkedAt) times.push('上次检测 '+guardTime(record.checkedAt)); if(needsRecheck)times.push(record.cacheReason||'下次请求需要重新检测');else if(record?.status==='passed'&&record.expiresAt) times.push('结果到期 '+guardTime(record.expiresAt));
+ $('guardCheckedAt').textContent=times.join(' · ');
+ const alert = g.error ? '保护配置无法读取或验证，请先处理以下错误。受保护的请求不会放行。\n'+g.error : record?.status==='blocked' ? (policy.enabled?'已阻止此模型继续返回项目内容。':'当前保护已关闭，保留的锁定记录不会拦截请求。')+'\n'+(record.reason||'检测发现模型不一致。')
+  : policy.enabled&&!supported&&current.model ? '此模型尚未被参考库收录，保护已启用时会拒绝请求。可在 CC Switch/Codex 选择支持的模型后重新检测。'
+  : policy.enabled&&current.available===false ? (current.reason||'当前转发路径无法进行独立检测，受保护的请求将被拦截。')
+  : record&&['unverified','unsupported','suspect'].includes(record.status) ? (record.reason||guardLabels[record.status]) : '';
+ $('guardAlert').textContent=alert; $('guardAlert').hidden=!alert; $('guardAlert').className='guard-banner'+(record?.status==='blocked'||g.error?'':' warn');
+ selectTtl('guardTtl',policy.ttlSeconds); $('guardTtl').disabled=busy||!!g.error||!id||!provider?.editable;
+ $('guardTest').disabled=busy||checking||!!g.error||current.available!==true||!id||!current.model||!supported;
+ $('guardTest').textContent=checking?'正在检测，请稍候…':'立即检测当前模型';
+ $('guardReset').hidden=record?.status!=='blocked';$('guardReset').disabled=busy||!!g.error||checking||record?.status!=='blocked';
+ $('saveGuard').disabled=!!g.error;$('drawerGuardEnabled').disabled=!!g.error;$('drawerGuardTtl').disabled=!!g.error;
+ $('guardActionNote').textContent=current.available===false ? (current.reason||'需先接入 CC Switch 当前供应商，才能独立检测。') : !current.model ? '等待请求以确定模型，之后可以发起检测。' : !supported ? '支持模型：'+(g.models||[]).join('、') : policy.enabled ? '检测期间原项目请求会等待；发生异常时不会把待校验的输出送入项目。' : '可先手动检测，再决定是否开启保护。保护关闭时，检测结果不会自动拦截项目请求。';
+ const records=guardRecords().filter(r=>r.status==='blocked'), frag=document.createDocumentFragment();
+ $('guardLocksSection').hidden=!records.length;$('guardLocksCount').textContent=records.length+' 项';
+ for(const r of records) {
+  const row=element('div',null,'guard-record'), name=element('div');
+  name.append(element('div',r.providerName||state.providers.find(p=>p.id===r.providerId)?.name||r.providerId,'guard-record-title'),element('div',r.model+' · '+(r.effort||'default'),'guard-record-meta'));
+  const info=element('div',null,'guard-record-reason'); info.append(element('div',r.reason||guardLabels.blocked),element('div',guardTime(r.checkedAt)+(r.prediction?' · 最相近 '+r.prediction:'')+(Number.isFinite(r.score)?' · 匹配分 '+Number(r.score).toFixed(3):''),'guard-record-meta'));
+  const actions=element('div'), enabled=guardPolicy(r.providerId).enabled;actions.append(element('span',enabled?guardLabels.blocked:'保留锁定 · 保护已关闭','guard-state '+(enabled?'bad':'')));
+  const clear=element('button','清除锁定','button small');clear.type='button';clear.style.marginTop='7px';clear.style.display='block';clear.disabled=busy||!!g.error||(g.jobs||[]).includes(r.key)||(g.checking||[]).some(c=>c.key===r.key);clear.setAttribute('aria-label','清除 '+(r.providerName||r.providerId)+' '+r.model+' 的锁定');clear.addEventListener('click',()=>clearGuard(r.key));actions.append(clear);
+  row.append(name,info,actions);frag.append(row);
+ }
+ $('guardRecords').replaceChildren(frag);
+}
+function renderRows() {
+ if (!state) return;
+ const q = $('search').value.toLocaleLowerCase().trim();
+ const providers = state.providers.filter(p => (!q || (p.name+' '+p.endpoint).toLocaleLowerCase().includes(q)) && (tab === 'all' || (tab === 'custom' ? p.source === 'custom'||Object.hasOwn(state.guard?.providers||{},p.id) : p.rule.historyFilter||p.rule.stripResponsesLiteHeader||guardPolicy(p.id).enabled)));
+ const frag = document.createDocumentFragment(), guardRevision=state.guard?.settingsRevision;
+ for (const p of providers) {
+  const tr = element('tr'); if (p.id === selectedId) tr.className = 'selected';
+  const td = element('td'), name = element('div', null, 'provider-name'); name.append(element('span', p.name)); if (p.current) name.append(element('span','当前','pill green')); td.append(name, element('div',p.endpoint || '地址未配置 / 官方登录','endpoint'));
+  const rules = element('td'); rules.append(element('div',p.editable ? mode(p.rule) : '暂不支持配置','rule-label'),element('div',p.source === 'custom' ? '自定义规则' : '默认规则','rule-source'));
+  const toggleCell = element('td'), toggle = element('button',null,'switch'); toggle.type='button'; toggle.setAttribute('role','switch'); toggle.setAttribute('aria-checked',String(p.rule.historyFilter)); toggle.setAttribute('aria-label',p.name+' 历史过滤'); toggle.disabled = busy || !p.editable; toggle.addEventListener('click',() => changeRule(p.id,{...p.rule,historyFilter:!p.rule.historyFilter},state.revision)); toggleCell.append(toggle,element('span',p.rule.historyFilter ? '开启' : '关闭','switch-label'));
+  const guardCell=element('td',null,'guard-cell'), gp=guardPolicy(p.id), guardToggle=element('button',null,'switch'); guardCell.hidden=!state.guard; guardToggle.type='button';guardToggle.setAttribute('role','switch');guardToggle.setAttribute('aria-checked',String(gp.enabled));guardToggle.setAttribute('aria-label',p.name+' 模型保护');guardToggle.disabled=busy||!!state.guard?.error||(!p.editable&&!gp.enabled);guardToggle.addEventListener('click',()=>changeGuard(p.id,{...gp,enabled:!gp.enabled},false,guardRevision));guardCell.append(guardToggle,element('span',gp.enabled?'开启':'关闭','switch-label'));
+  const locked=guardRecords(p.id).find(r=>r.status==='blocked'); if(locked)guardCell.append(element('div',gp.enabled?'有模型已锁定':'已关闭 · 保留锁定','rule-source'));
+  const action = element('td'), button = element('button','配置','button small'); button.disabled=busy || !p.editable; button.addEventListener('click',() => openDrawer(p)); action.append(button);
+  tr.append(td,rules,toggleCell,guardCell,action); frag.append(tr);
+ }
+ $('providers').replaceChildren(frag); $('empty').hidden=providers.length>0; $('count').textContent=providers.length+' 个供应商';freezeExpiredControls();
+}
+function render() {
+ const current=state.providers.find(p=>p.current), f=state.filter, stats=f.stats;
+ $('current').textContent=current?.name || '未选择供应商';
+ $('currentMode').textContent=state.autoFailover ? '自动故障转移已开启 · 历史过滤暂不生效' : state.currentPolicy.filter ? '历史兼容已启用' : state.currentPolicy.stripResponsesLiteHeader ? 'Lite 协议兼容已启用' : '原样转发';
+ $('currentHistoryEnabled').setAttribute('aria-checked',String(!!current?.rule.historyFilter));$('currentHistoryEnabled').disabled=busy||!current?.editable;
+ $('enabled').textContent=number(state.providers.filter(p=>p.rule.historyFilter).length); $('total').textContent='共 '+state.providers.length+' 个 Codex 供应商';
+ $('filtered').textContent=number(stats.filteredRequests); $('encrypted').textContent=number((stats.removedEncryptedContentItems||0)+(stats.removedReasoningItems||0));
+ $('aliases').setAttribute('aria-checked',String(state.aliasCompatibility.enabled)); $('aliases').disabled=busy || !state.aliasCompatibility.configured;
+ $('aliasDetail').textContent=state.aliasCompatibility.enabled ? '当前生效 '+state.aliasCompatibility.activeCount+' 个别名 · 已修复 '+number(stats.normalizedModelAliases)+' 次请求' : '当前已关闭';
+ $('serviceStatus').textContent='服务 v'+f.filterVersion+' · '+(f.state==='filtering' ? '本地转发运行中' : f.state); $('serviceStatus').className='status-live';
+ $('versionBadge').textContent='v'+f.filterVersion;
+ $('updated').textContent='更新于 '+new Date().toLocaleTimeString('zh-CN',{hour12:false}); $('dot').style.background='var(--accent)';
+ const warning=state.autoFailover ? 'CC Switch 自动故障转移已开启，历史过滤暂不执行。若需要稳定的历史兼容处理，请在 CC Switch 关闭自动故障转移。' : f.lastError ? '配置异常：'+f.lastError : f.state !== 'filtering' ? '服务已启动，尚未接入 Codex。请在 CC Switch 开启本地代理和 Codex 接管。' : '';
+ $('warning').textContent=warning; $('warning').hidden=!warning; renderGuard(); renderRows();renderNavigation();freezeExpiredControls();
+}
+async function refresh() {
+ if (loading || busy || authExpired) return; loading=true; lastRefresh=Date.now();
+ try { state=await api('/state'); $('error').hidden=true; render(); }
+ catch(e) { if(!authExpired){$('error').textContent='无法读取本地服务。服务已停止时，请双击桌面“Codex 过滤管理”。\n'+e.message; $('error').hidden=false; $('dot').style.background='var(--warn)'; $('serviceStatus').textContent='本地服务连接中断';} }
+ finally { loading=false; }
+}
+function setBusy(v) { busy=v; $('drawer').classList.toggle('busy',v); $('refresh').disabled=v; if(state) render(); }
+async function guardAction(route,method,payload,message,close=false) {
+ if(busy)return;setBusy(true);
+ try { state=await api(route,method,payload);$('error').hidden=true;if(close)closeDrawer();toast(message); }
+ catch(e) {
+  if(e.code==='guard_settings_changed'){
+   let refreshed=false;try{state=await api('/state');refreshed=true;}catch{}
+   toast(!refreshed?'保护设置已在其他页面更改。本次修改未保存，最新状态读取失败；请刷新后再修改。':$('drawer').hidden?'保护设置已在其他页面更改。本次修改未保存，已读取最新设置。':'保护设置已在其他页面更改。本次修改未保存；请关闭并重新打开设置后再修改。',true);
+  }else toast(e.message,true);
+ }
+ finally { setBusy(false); }
+}
+function changeGuard(id,policy,close=false,revision=state?.guard?.settingsRevision) { return guardAction('/guard/providers/'+encodeURIComponent(id),'PUT',{enabled:policy.enabled,ttlSeconds:policy.ttlSeconds,revision},policy.enabled?'模型保护已开启，下次请求将先检测':'模型保护已关闭',close); }
+function clearGuard(key) { if(key)return guardAction('/guard/clear','POST',{key},'锁定已清除；下次请求仍须重新检测通过'); }
+async function changeRule(id, rule, revision) {
+ if(busy) return; setBusy(true);
+ try { state=await api('/providers/'+encodeURIComponent(id)+'/rule',rule===null ? 'DELETE' : 'PUT',{rule,revision}); $('error').hidden=true; closeDrawer(); toast(rule===null ? '已恢复默认规则，下次请求生效' : '设置已保存，下次请求生效'); }
+ catch(e) { toast(e.message,true); }
+ finally { setBusy(false); }
+}
+function openDrawer(p) {
+ selectedId=p.id; editRevision=state.revision; editGuardRevision=state.guard?.settingsRevision; focusBefore=document.activeElement;
+ $('drawerTitle').textContent=p.name; $('drawerEndpoint').textContent=p.endpoint; keys.forEach(k=>$(k).checked=p.rule[k]);
+ $('drawerSource').textContent=p.source==='custom' ? '此供应商正在使用你保存的规则。' : '此供应商正在使用内置默认规则。';
+ $('drawerGuard').hidden=!state.guard; const gp=guardPolicy(p.id); $('drawerGuardEnabled').checked=gp.enabled;selectTtl('drawerGuardTtl',gp.ttlSeconds);$('drawerGuardStatus').textContent=p.current ? '此供应商当前正在使用，可在主页发起手动检测。' : '保存后待切换到此供应商生效；手动检测仅适用于当前供应商。';
+ $('drawer').hidden=false; renderRows(); $('closeDrawer').focus();
+}
+function closeDrawer() { $('drawer').hidden=true; selectedId=null; renderRows(); if(focusBefore?.isConnected) focusBefore.focus(); }
+$('saveRule').addEventListener('click',()=>changeRule(selectedId,Object.fromEntries(keys.map(k=>[k,$(k).checked])),editRevision));
+$('disableRule').addEventListener('click',()=>changeRule(selectedId,{historyFilter:false,preserveEncryptedInclude:true,stripResponsesLiteHeader:false},editRevision));
+$('resetRule').addEventListener('click',()=>changeRule(selectedId,null,editRevision));
+$('saveGuard').addEventListener('click',()=>changeGuard(selectedId,{enabled:$('drawerGuardEnabled').checked,ttlSeconds:Number($('drawerGuardTtl').value)},true,editGuardRevision));
+$('guardEnabled').addEventListener('click',()=>{ const id=state?.guard?.current?.providerId||state?.providers.find(p=>p.current)?.id;if(id)changeGuard(id,{...guardPolicy(id),enabled:!guardPolicy(id).enabled}); });
+$('guardTtl').addEventListener('change',()=>{ const id=state?.guard?.current?.providerId||state?.providers.find(p=>p.current)?.id;if(id)changeGuard(id,{...guardPolicy(id),ttlSeconds:Number($('guardTtl').value)}); });
+$('guardTest').addEventListener('click',()=>{const c=state?.guard?.current;if(c)guardAction('/guard/check','POST',{providerId:c.providerId,model:c.model,effort:c.effort},'检测已提交，请等待结果；本次会产生上游计费请求');});
+$('guardReset').addEventListener('click',()=>clearGuard(guardRecordForCurrent()?.key));
+$('currentHistoryEnabled').addEventListener('click',()=>{const current=state?.providers.find(p=>p.current);if(current)changeRule(current.id,{...current.rule,historyFilter:!current.rule.historyFilter},state.revision);});
+function changeHistoryPage(offset) {historyOffset=Math.max(0,offset);historyAnchor=null;renderGuardHistory();$('guardHistoryViewport').scrollTop=0;}
+$('guardHistoryPrev').addEventListener('click',()=>changeHistoryPage(historyOffset<2*historyPageSize?0:historyOffset-historyPageSize));
+$('guardHistoryNext').addEventListener('click',()=>changeHistoryPage(historyOffset+historyPageSize));
+$('guardHistoryLatest').addEventListener('click',()=>changeHistoryPage(0));
+document.querySelectorAll('[data-view]').forEach(button=>{
+ button.addEventListener('click',()=>selectView(button.dataset.view));
+ button.addEventListener('keydown',event=>{
+  const buttons=[...document.querySelectorAll('[data-view]')].filter(b=>!b.hidden&&!b.disabled), index=buttons.indexOf(button);
+  let next;if(event.key==='ArrowRight')next=buttons[(index+1)%buttons.length];else if(event.key==='ArrowLeft')next=buttons[(index+buttons.length-1)%buttons.length];else if(event.key==='Home')next=buttons[0];else if(event.key==='End')next=buttons.at(-1);
+  if(next){event.preventDefault();selectView(next.dataset.view,true);}
+ });
+});
+$('closeDrawer').addEventListener('click',()=>{if(!busy)closeDrawer();});
+$('drawer').addEventListener('click',e=>{if(e.target===$('drawer')&&!busy)closeDrawer();});
+document.addEventListener('keydown',e=>{
+ if($('drawer').hidden)return;
+ if(e.key==='Escape'&&!busy){closeDrawer();return;}
+ if(e.key==='Tab'){
+  const targets=[...$('drawer').querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled)')].filter(x=>x.getClientRects().length); const first=targets[0],last=targets.at(-1);
+  if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}
+ }
+});
+$('aliases').addEventListener('click',async()=>{
+ if(busy)return;setBusy(true);
+ try{state=await api('/aliases','PUT',{enabled:!state.aliasCompatibility.enabled});toast('旧模型名称兼容设置已更新');}catch(e){toast(e.message,true);}finally{setBusy(false);}
+});
+$('refresh').addEventListener('click',refresh); $('search').addEventListener('input',renderRows);
+$('reconnect').addEventListener('click',()=>location.reload());
+document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>{tab=b.dataset.tab;document.querySelectorAll('[data-tab]').forEach(x=>{x.classList.toggle('active',x===b);x.setAttribute('aria-pressed',String(x===b));});renderRows();}));
+refresh(); setInterval(()=>{if(!document.hidden&&Date.now()-lastRefresh>=(guardChecking()?2000:5000))refresh();},1000);
+</script>
+</body>
+</html>

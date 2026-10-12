@@ -1,0 +1,16 @@
+* text=auto
+*.cjs text eol=lf
+*.mjs text eol=lf
+*.py text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.html text eol=lf
+*.svg text eol=lf
+*.yml text eol=lf
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.vbs text eol=crlf
+*.png binary
+*.ico binary
+# Preserve the vendored bytes exactly: runtime SHA-256 pins include line endings.
+vendor/modeltrace/* -text whitespace=cr-at-eol

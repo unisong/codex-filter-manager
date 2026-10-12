@@ -1,0 +1,20 @@
+# Private local state: includes management tokens, routes, backups and history.
+.runtime/
+.tools/
+dist/
+node_modules/
+__pycache__/
+*.py[cod]
+.env
+.env.*
+!.env.example
+*.log
+*.bak
+*.bak-*
+*.previous
+*.db
+*.db-*
+auth.json
+config.toml
+.DS_Store
+Thumbs.db

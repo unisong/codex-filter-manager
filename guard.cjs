@@ -1,0 +1,473 @@
+'use strict';
+
+const fs = require('node:fs');
+const path = require('node:path');
+const {createHash, randomBytes, randomUUID} = require('node:crypto');
+const {pathToFileURL} = require('node:url');
+
+const DEFAULT_POLICY = Object.freeze({enabled: false, ttlSeconds: 600});
+const PROBE_PROMPT = 'Directly choose 300 integers from 1 through 355, inclusive. Allow repeats. Do not sort, balance frequencies, repair duplicates, or deliberately create an arithmetic pattern. Do not use tools, code, or a random-number generator. Return only the 300 integers, separated by commas.';
+const MAX_HISTORY = 100;
+const TERMINAL_STATUSES = new Set(['passed', 'blocked', 'unverified', 'unsupported']);
+const HISTORY_SOURCES = new Set(['automatic', 'manual', 'response', 'legacy']);
+const TIMEOUT_MS = 145000;
+const ARTIFACT_ROOT = path.join(__dirname, 'vendor', 'modeltrace');
+const HASHES = {
+  'fingerprint-core.mjs': 'adff55637f6c0534c2c10703e028d4d1970d325e8daecb55efaa7f95a1938d5c',
+  'unified_bank.json': 'eeab6ff54d6ffb2b294ebfd6cce25bce387f7a268b66759144f64c16f6c66b9f'
+};
+
+function failure(code, message) {
+  const error = new Error(message);
+  error.code = code; error.status = 409;
+  return error;
+}
+
+function text(value, maximum = 512) {
+  return String(value ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, maximum);
+}
+
+function identifier(value, label, maximum = 512) {
+  if (typeof value !== 'string' || !value.trim() || value.length > maximum || /[\u0000-\u001f\u007f]/.test(value)) {
+    throw failure('guard_invalid_setting', label + '格式无效。');
+  }
+  return value;
+}
+
+function validatePolicy(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)
+      || Object.keys(value).some(key => !['enabled', 'ttlSeconds'].includes(key))
+      || typeof value.enabled !== 'boolean' || !Number.isInteger(value.ttlSeconds)
+      || !(value.ttlSeconds === 0 || (value.ttlSeconds >= 60 && value.ttlSeconds <= 3600))) {
+    throw failure('guard_invalid_setting', '检测设置无效：间隔须为 0（每次请求）或 60 到 3600 秒。');
+  }
+  return {enabled: value.enabled, ttlSeconds: value.ttlSeconds};
+}
+
+function atomicWrite(filename, value) {
+  fs.mkdirSync(path.dirname(filename), {recursive: true});
+  const temporary = filename + '.' + process.pid + '.' + randomBytes(6).toString('hex') + '.tmp';
+  try {
+    fs.writeFileSync(temporary, value, {flag: 'wx', mode: 0o600});
+    fs.renameSync(temporary, filename);
+  } finally { if (fs.existsSync(temporary)) fs.unlinkSync(temporary); }
+}
+
+function artifacts() {
+  const contents = {};
+  for (const [name, expected] of Object.entries(HASHES)) {
+    const bytes = fs.readFileSync(path.join(ARTIFACT_ROOT, name));
+    if (createHash('sha256').update(bytes).digest('hex') !== expected) throw new Error('fingerprint_checksum_mismatch');
+    contents[name] = bytes;
+  }
+  const bank = JSON.parse(contents['unified_bank.json']);
+  return {bank, models: bank.models.map(model => model.id)};
+}
+
+function sameModel(expected, actual) {
+  return typeof actual === 'string' && (actual === expected
+    || (actual.startsWith(expected + '-') && /^\d{4}-\d{2}-\d{2}$/.test(actual.slice(expected.length + 1))));
+}
+
+// These are conservative classification thresholds from ModelTrace's MIT guard.
+// The weights describe a closed reference set; they are never confidence claims.
+function classify(result, expected) {
+  if (!result || result.used_outputs !== 3 || !Array.isArray(result.results) || result.results.length < 2
+      || (result.diagnostics && (result.diagnostics.length !== 3 || result.diagnostics.some(item => !item.accepted)))) {
+    throw failure('guard_unverified', '三个检测样本未全部通过校验，不能判断模型一致性。');
+  }
+  const ordered = [...result.results].sort((a, b) => b.probability - a.probability);
+  const top = ordered[0], candidate = ordered.find(item => item.model === expected);
+  if (!candidate || ordered.some(item => typeof item.model !== 'string'
+      || !Number.isFinite(item.probability) || item.probability < 0 || item.probability > 1)) {
+    throw failure('guard_unverified', '指纹评分结果无效，未放行请求。');
+  }
+  const gap = top.probability - (top.model === expected ? ordered[1].probability : candidate.probability);
+  let outcome = 'unverified';
+  if (top.model === expected && top.probability >= 0.5) outcome = 'passed';
+  else if (top.model !== expected && top.probability >= 0.8
+      && candidate.probability <= 0.15 && gap >= 0.65) outcome = 'difference';
+  return {outcome, prediction: top.model, score: top.probability, gap};
+}
+
+function waitFor(promise, signal) {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(failure('guard_unverified', '请求已取消。'));
+  return new Promise((resolve, reject) => {
+    const abort = () => { signal.removeEventListener('abort', abort); reject(failure('guard_unverified', '请求已取消。')); };
+    signal.addEventListener('abort', abort, {once: true});
+    promise.then(value => { signal.removeEventListener('abort', abort); resolve(value); }, error => {
+      signal.removeEventListener('abort', abort); reject(error);
+    });
+  });
+}
+
+function createGuard({runtime, probe, log = () => {}, onBlock = () => {}, now = Date.now, analyze} = {}) {
+  if (typeof runtime !== 'string' || typeof probe !== 'function') throw new Error('Guard needs runtime and probe.');
+  const filename = path.join(runtime, 'model-guard.json');
+  const providers = new Map(), records = new Map(), blocks = new Map(), passes = new Map();
+  // Completed attempts are immutable evidence, separate from current state and
+  // the maps that authorize a request or retain a durable lock.
+  const history = [];
+  const flights = new Map(), generations = new Map(), keyGenerations = new Map(), admissions = new WeakMap();
+  // Display why a historical pass cannot be reused without changing its verdict.
+  // Trust remains exclusively in the live passes map and is never restored here.
+  const cacheReasons = new Map();
+  let fatal, bank, models = [];
+  try { ({bank, models} = artifacts()); }
+  catch { fatal = '指纹库缺失或校验失败。请修复本地安装后重启服务。'; }
+  const iso = timestamp => new Date(timestamp).toISOString();
+  const generation = id => generations.get(id) || 0;
+  const keyGeneration = key => keyGenerations.get(key) || 0;
+  const checkHealthy = () => { if (fatal) throw failure('guard_unverified', fatal); };
+  const safeContext = context => ({key: identifier(context?.key, '路由标识', 1024),
+    providerId: identifier(context?.providerId, '供应商 ID', 256),
+    providerName: text(context?.providerName || context?.providerId, 256),
+    model: identifier(context?.model, '模型名', 256), effort: text(context?.effort || 'default', 64)});
+  const sanitizeRecord = record => {
+    if (!record || typeof record !== 'object' || Array.isArray(record)) throw new Error('invalid_record');
+    const clean = safeContext(record);
+    if (!['unchecked', 'checking', 'suspect', 'passed', 'blocked', 'unverified', 'unsupported'].includes(record.status)) throw new Error('invalid_status');
+    Object.assign(clean, {status: record.status, reason: text(record.reason), checkedAt: record.checkedAt || null,
+      expiresAt: record.expiresAt || null, prediction: typeof record.prediction === 'string' ? text(record.prediction, 256) : null,
+      score: Number.isFinite(record.score) ? record.score : null, gap: Number.isFinite(record.gap) ? record.gap : null,
+      rounds: Number.isInteger(record.rounds) ? record.rounds : 0});
+    if ([clean.checkedAt, clean.expiresAt].some(value => value !== null && (typeof value !== 'string' || !Number.isFinite(Date.parse(value))))) throw new Error('invalid_date');
+    return clean;
+  };
+  const sanitizeHistory = entry => {
+    const clean = sanitizeRecord(entry);
+    if (!TERMINAL_STATUSES.has(clean.status) || !HISTORY_SOURCES.has(entry.source)
+        || typeof entry.id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(entry.id)
+        || (entry.score !== null && entry.score !== undefined && (!Number.isFinite(entry.score) || entry.score < 0 || entry.score > 1))
+        || (entry.gap !== null && entry.gap !== undefined && (!Number.isFinite(entry.gap) || entry.gap < 0 || entry.gap > 1))
+        || !Number.isInteger(entry.rounds) || entry.rounds < 0 || entry.rounds > 2) throw new Error('invalid_history');
+    return Object.freeze({...clean, id: entry.id, source: entry.source});
+  };
+  try {
+    const raw = fs.readFileSync(filename, 'utf8');
+    const data = JSON.parse(raw);
+    if (data.version !== 1 || !data.providers || typeof data.providers !== 'object' || Array.isArray(data.providers)
+        || !Array.isArray(data.records) || data.records.length > MAX_HISTORY
+        || !data.blocks || typeof data.blocks !== 'object' || Array.isArray(data.blocks)
+        || (Object.hasOwn(data, 'history') && (!Array.isArray(data.history) || data.history.length > MAX_HISTORY))) throw new Error('invalid_guard_file');
+    const legacyRecords = new Map();
+    for (const [id, value] of Object.entries(data.providers)) providers.set(identifier(id, '供应商 ID', 256), validatePolicy(value));
+    for (const value of data.records) {
+      const record = sanitizeRecord(value);
+      if (TERMINAL_STATUSES.has(record.status)) legacyRecords.set(record.key, {...record});
+      if (record.status === 'passed') cacheReasons.set(record.key, '服务已重启，下次请求需要重新检测。');
+      if (['checking', 'suspect'].includes(record.status)) Object.assign(record,
+        {status: 'unchecked', reason: '服务已重启，下次请求需要重新检测。', expiresAt: null});
+      records.set(record.key, record);
+    }
+    for (const [key, value] of Object.entries(data.blocks)) {
+      const record = sanitizeRecord(value);
+      if (key !== record.key || record.status !== 'blocked') throw new Error('invalid_block');
+      legacyRecords.set(key, {...record});
+      blocks.set(key, record); records.set(key, record);
+    }
+    if (Object.hasOwn(data, 'history')) {
+      const ids = new Set();
+      for (const value of data.history) {
+        const entry = sanitizeHistory(value);
+        if (ids.has(entry.id)) throw new Error('duplicate_history_id');
+        ids.add(entry.id); history.push(entry);
+      }
+    } else {
+      for (const record of [...legacyRecords.values()]
+        .sort((a, b) => String(b.checkedAt || '').localeCompare(String(a.checkedAt || ''))).slice(0, MAX_HISTORY)) {
+        history.push(sanitizeHistory({...record, id: randomUUID(), source: 'legacy'}));
+      }
+    }
+  } catch (error) {
+    if (error.code !== 'ENOENT') fatal = '本地检测设置或锁定记录损坏。为避免失去保护，已暂停转发；请从 model-guard.json.previous 恢复后重启服务。';
+  }
+
+  function persist() {
+    checkHealthy();
+    try {
+      const data = {version: 1, providers: Object.fromEntries(providers),
+        records: [...records.values()].sort((a, b) => String(b.checkedAt || '').localeCompare(String(a.checkedAt || ''))).slice(0, MAX_HISTORY),
+        blocks: Object.fromEntries(blocks), history};
+      if (fs.existsSync(filename)) atomicWrite(filename + '.previous', fs.readFileSync(filename, 'utf8'));
+      atomicWrite(filename, JSON.stringify(data, null, 2) + '\n');
+    } catch {
+      fatal = '检测设置或锁定记录无法保存，已暂停转发。请检查本地文件权限和磁盘空间。';
+      throw failure('guard_unverified', fatal);
+    }
+  }
+
+  function makeRecord(context, details) {
+    return {...safeContext(context), status: 'unchecked', reason: '', checkedAt: iso(now()), expiresAt: null,
+      prediction: null, score: null, gap: null, rounds: 0, ...details};
+  }
+
+  function rememberHistory(record, source) {
+    history.unshift(sanitizeHistory({...record, id: randomUUID(), source}));
+    if (history.length > MAX_HISTORY) history.length = MAX_HISTORY;
+  }
+
+  function appendHistory(record, source) {
+    rememberHistory(record, source); persist();
+  }
+
+  function put(context, details) {
+    const record = makeRecord(context, details);
+    cacheReasons.delete(record.key);
+    records.delete(record.key); records.set(record.key, record);
+    // Preserve every durable latch separately; only non-blocked display history is evicted.
+    while (records.size > MAX_HISTORY) {
+      const removable = [...records.keys()].find(key => !blocks.has(key));
+      if (!removable) break;
+      records.delete(removable); cacheReasons.delete(removable);
+    }
+    persist(); return record;
+  }
+
+  function policy(providerId) {
+    checkHealthy(); identifier(providerId, '供应商 ID', 256);
+    return {...(providers.get(providerId) || DEFAULT_POLICY)};
+  }
+
+  function configure(providerId, value) {
+    checkHealthy(); identifier(providerId, '供应商 ID', 256);
+    const next = validatePolicy(value), previous = policy(providerId);
+    if (next.enabled !== previous.enabled || next.ttlSeconds !== previous.ttlSeconds) {
+      generations.set(providerId, generation(providerId) + 1);
+      for (const [key, record] of passes) if (record.providerId === providerId) passes.delete(key);
+      for (const entry of flights.values()) if (entry.context.providerId === providerId) entry.controller.abort();
+      for (const [key, record] of records) if (record.providerId === providerId && !blocks.has(key)) {
+        const reason = next.enabled ? '检测设置已更新，下次请求重新检测。' : '该供应商的检测已关闭。';
+        if (record.status === 'passed') cacheReasons.set(key, reason);
+        else records.set(key, {...record, status: 'unchecked', expiresAt: null, reason});
+      }
+    }
+    providers.set(providerId, next); persist();
+    log('guard-configured', {providerId, ...next});
+    return {...next};
+  }
+
+  function invalidate(providerId) {
+    checkHealthy(); identifier(providerId, '供应商 ID', 256);
+    generations.set(providerId, generation(providerId) + 1);
+    for (const [key, record] of passes) if (record.providerId === providerId) passes.delete(key);
+    for (const entry of flights.values()) if (entry.context.providerId === providerId) entry.controller.abort();
+    for (const [key, record] of records) if (record.providerId === providerId && !blocks.has(key)) {
+      const reason = '供应商路由已切换，下次请求需要重新检测。';
+      if (record.status === 'passed') cacheReasons.set(key, reason);
+      else records.set(key, {...record, status: 'unchecked', expiresAt: null, reason});
+    }
+    persist();
+  }
+
+  function block(context, reason, actualModel, recordHistory = true) {
+    checkHealthy(); const clean = safeContext(context), previous = records.get(clean.key);
+    const alreadyBlocked = blocks.has(clean.key);
+    passes.delete(clean.key);
+    cacheReasons.delete(clean.key);
+    const record = {...clean, status: 'blocked', reason: text(reason), checkedAt: iso(now()), expiresAt: null,
+      prediction: typeof actualModel === 'string' ? text(actualModel, 256) : previous?.prediction || null,
+      score: previous?.score ?? null, gap: previous?.gap ?? null, rounds: previous?.rounds || 0};
+    blocks.set(clean.key, record); records.set(clean.key, record);
+    // Probe runs append their single final result in run(). Only a business
+    // response creates an independent event here, once per newly created lock.
+    if (recordHistory && !alreadyBlocked) rememberHistory({...record, score: null, gap: null, rounds: 0}, 'response');
+    let persistenceError;
+    try { persist(); } catch (error) { persistenceError = error; }
+    // Abort affected output even when disk failure prevents writing the latch.
+    try { onBlock(context); } catch {}
+    log('guard-blocked', {providerId: clean.providerId, model: clean.model, prediction: record.prediction});
+    if (persistenceError) throw persistenceError;
+    return {...record};
+  }
+
+  function assertAllowed(context) {
+    checkHealthy(); safeContext(context);
+    if (blocks.has(context.key)) throw failure('guard_blocked', blocks.get(context.key).reason);
+    if (records.get(context.key)?.status === 'suspect') {
+      throw failure('guard_unverified', '检测发现指纹差异信号，正在复核；本次输出已拦截。');
+    }
+    const admitted = admissions.get(context);
+    if (admitted && (generation(context.providerId) !== admitted.generation
+        || keyGeneration(context.key) !== admitted.keyGeneration || !policy(context.providerId).enabled)) {
+      throw failure('guard_unverified', '检测设置在本次响应期间改变，输出已拦截；请重试。');
+    }
+  }
+
+  function clear(key) {
+    checkHealthy(); identifier(key, '路由标识', 1024);
+    const previous = records.get(key) || blocks.get(key);
+    blocks.delete(key); passes.delete(key);
+    keyGenerations.set(key, keyGeneration(key) + 1);
+    if (flights.has(key)) flights.get(key).controller.abort();
+    if (previous) put(previous, {status: 'unchecked', reason: '锁定已清除，下次请求仍须重新检测。'});
+    else persist();
+    log('guard-cleared', {key});
+  }
+
+  async function scoreRound(context, signal) {
+    const outputs = await Promise.all(Array.from({length: 3}, async () => {
+      const output = await probe({context, signal, prompt: PROBE_PROMPT});
+      if (signal.aborted) throw failure('guard_unverified', '检测已取消。');
+      if (!sameModel(context.model, output?.model)) {
+        block(context, '检测响应声明的模型与请求模型不一致，已锁定该模型。', output?.model, false);
+        throw failure('guard_blocked', '检测响应声明的模型与请求模型不一致，已锁定该模型。');
+      }
+      if (typeof output.text !== 'string' || output.text.length > 65536) throw failure('guard_unverified', '检测没有返回有效的数字样本。');
+      return {text: output.text, expected_count: 300};
+    }));
+    const scorer = await import(pathToFileURL(path.join(ARTIFACT_ROOT, 'fingerprint-core.mjs')).href);
+    if (outputs.some(output => {
+      const count = scorer.parseNumbers(output.text).length;
+      return count < 165 || count > 600;
+    })) {
+      throw failure('guard_unverified', '数字样本不足或异常：每个独立样本至少需要 165 个有效数字。');
+    }
+    return classify(await (analyze ? analyze(outputs, bank) : scorer.analyzeGlobalOutputs(outputs, bank)), context.model);
+  }
+
+  async function run(context, settings, startedGeneration, controller, force) {
+    const previousBlock = blocks.get(context.key);
+    let rounds = 0, result, completedRecord;
+    const signal = controller.signal;
+    const checkCurrent = () => {
+      checkHealthy();
+      if (signal.aborted || generation(context.providerId) !== startedGeneration
+          || (!force && !policy(context.providerId).enabled)) {
+        throw failure('guard_unverified', '检测已取消或设置已改变，请重试。');
+      }
+    };
+    let timer;
+    const timeout = new Promise((resolve, reject) => {
+      timer = setTimeout(() => {
+        controller.abort(); reject(failure('guard_unverified', '检测超时，未能验证模型一致性。'));
+      }, TIMEOUT_MS);
+      timer.unref?.();
+    });
+    const work = (async () => {
+      checkCurrent();
+      if (!previousBlock) put(context, {status: 'checking', reason: '正在检测三个独立数字样本。'});
+      result = await scoreRound(context, signal); rounds = 1; checkCurrent();
+      if (result.outcome === 'difference') {
+        // Revoke already-admitted output permanently for this check epoch. A
+        // quick inconclusive confirmation must not erase the brief suspect state
+        // before the service's cancellation watcher has had time to observe it.
+        keyGenerations.set(context.key, keyGeneration(context.key) + 1);
+        if (!previousBlock) put(context, {...result, status: 'suspect', rounds,
+          reason: '发现指纹差异信号，正在用三个新样本复核。'});
+        const confirmation = await scoreRound(context, signal); rounds = 2; checkCurrent();
+        if (confirmation.outcome === 'difference' && confirmation.prediction === result.prediction) {
+          result = confirmation;
+          // Store score detail before making the durable latch.
+          put(context, {...result, status: 'suspect', rounds, reason: '两轮检测得到相同差异候选。'});
+          block(context, '两轮独立数字指纹均与请求模型明显不一致，已锁定供应商的此模型。此结果不是推理能力评分或身份确证。', result.prediction, false);
+          throw failure('guard_blocked', blocks.get(context.key).reason);
+        }
+        throw failure('guard_unverified', '两轮指纹结果没有达成一致，不能确认模型；本次请求未放行。');
+      }
+      if (result.outcome !== 'passed') throw failure('guard_unverified', '指纹差异不够明确，不能确认请求模型；本次请求未放行。');
+      checkCurrent();
+      if (blocks.has(context.key) && (!force || blocks.get(context.key) !== previousBlock)) {
+        throw failure('guard_blocked', blocks.get(context.key).reason);
+      }
+      if (force) blocks.delete(context.key);
+      const expires = now() + settings.ttlSeconds * 1000;
+      const record = put(context, {...result, status: 'passed', rounds, expiresAt: iso(expires),
+        reason: '数字指纹与请求模型相符；这不能证明推理质量或实际项目响应的身份。'});
+      completedRecord = record;
+      passes.set(context.key, {...record, expires, generation: startedGeneration});
+      log('guard-passed', {providerId: context.providerId, model: context.model, rounds});
+      return {enabled: settings.enabled, status: 'passed'};
+    })();
+    try {
+      const outcome = await Promise.race([work, timeout]);
+      appendHistory(completedRecord, force ? 'manual' : 'automatic');
+      return outcome;
+    }
+    catch (error) {
+      controller.abort();
+      if (error.code === 'guard_blocked' && !blocks.has(context.key)) {
+        block(context, '检测响应出现模型标识不一致，已锁定该模型。', undefined, false);
+      }
+      const details = {status: 'unverified', reason: error.code?.startsWith('guard_') ? text(error.message)
+        : '检测连接或评分失败，未能验证；这不代表模型降智。', rounds,
+        prediction: result?.prediction || null, score: result?.score ?? null, gap: result?.gap ?? null};
+      if (!blocks.has(context.key) && !fatal && generation(context.providerId) === startedGeneration) {
+        put(context, details);
+      }
+      if (!fatal) appendHistory(error.code === 'guard_blocked' && blocks.has(context.key)
+        ? makeRecord(context, {...details, status: 'blocked', reason: blocks.get(context.key).reason,
+          prediction: blocks.get(context.key).prediction}) : makeRecord(context, details), force ? 'manual' : 'automatic');
+      if (error.code?.startsWith('guard_')) throw error;
+      throw failure('guard_unverified', '检测连接或评分失败，未能验证；这不代表模型降智。');
+    } finally { clearTimeout(timer); }
+  }
+
+  async function ensure(context, {force = false, signal} = {}) {
+    checkHealthy(); safeContext(context);
+    if (signal?.aborted) throw failure('guard_unverified', '请求已取消。');
+    const settings = policy(context.providerId);
+    if (!settings.enabled && !force) return {enabled: false};
+    const currentGeneration = generation(context.providerId);
+    if (!force && blocks.has(context.key)) throw failure('guard_blocked', blocks.get(context.key).reason);
+    if (!models.includes(context.model)) {
+      const details = {status: 'unsupported', reason: '当前指纹库不支持模型 ' + text(context.model, 256) + '，已阻止受保护请求。'};
+      const record = !blocks.has(context.key) ? put(context, details) : makeRecord(context, details);
+      appendHistory(record, force ? 'manual' : 'automatic');
+      throw failure('guard_unsupported', '当前指纹库不支持该模型，无法验证；请关闭该供应商检测或选择受支持模型。');
+    }
+    let flight = flights.get(context.key);
+    const passed = passes.get(context.key);
+    // Manual rechecks take precedence over an older pass. A normal request must
+    // wait until their possible difference signal has been resolved.
+    if (!flight && !force && passed && passed.expires > now() && passed.generation === currentGeneration) {
+      admissions.set(context, {generation: currentGeneration, keyGeneration: keyGeneration(context.key)});
+      return {enabled: true, status: 'passed'};
+    }
+    if (!flight) {
+      // An inconclusive explicit recheck must not resurrect the older cached
+      // pass after its promise rejects.
+      if (force) passes.delete(context.key);
+      const controller = new AbortController();
+      flight = {controller, context, generation: currentGeneration, promise: null};
+      flights.set(context.key, flight);
+      flight.promise = run(context, settings, currentGeneration, controller, force).finally(() => {
+        if (flights.get(context.key) === flight) flights.delete(context.key);
+      });
+    }
+    const result = await waitFor(flight.promise, signal);
+    if (generation(context.providerId) !== currentGeneration || (!force && !policy(context.providerId).enabled)) {
+      throw failure('guard_unverified', '检测设置已改变，请重试。');
+    }
+    if (settings.enabled) {
+      admissions.set(context, {generation: currentGeneration, keyGeneration: keyGeneration(context.key)});
+      assertAllowed(context);
+    }
+    return result;
+  }
+
+  function snapshot() {
+    const visible = [...records.values()].map(record => {
+      const passed = passes.get(record.key), settings = providers.get(record.providerId) || DEFAULT_POLICY;
+      const cacheValid = !!(record.status === 'passed' && !fatal && settings.enabled
+        && !blocks.has(record.key) && !flights.has(record.key) && passed
+        && passed.generation === generation(record.providerId) && passed.expires > now());
+      const copy = {...record, cacheValid};
+      if (copy.status === 'passed' && !cacheValid) {
+        copy.cacheReason = fatal || (!settings.enabled ? '该供应商的检测已关闭。'
+          : settings.ttlSeconds === 0 ? '已设置每次请求检测，下次请求仍须重新检测。'
+          : cacheReasons.get(record.key) || (passed?.expires <= now()
+            ? '上次检测已过期，下次请求需要重新检测。' : '当前没有可复用的检测结果，下次请求需要重新检测。'));
+      }
+      return copy;
+    }).sort((a, b) => String(b.checkedAt || '').localeCompare(String(a.checkedAt || '')));
+    return {models: [...models], providers: Object.fromEntries(providers), records: visible,
+      history: history.map(entry => ({...entry})), historyLimit: MAX_HISTORY,
+      checking: [...flights.values()].map(entry => safeContext(entry.context)), ...(fatal ? {error: fatal} : {})};
+  }
+
+  return {policy, configure, invalidate, ensure, assertAllowed, block, clear, snapshot};
+}
+
+module.exports = {createGuard, classify, validatePolicy, PROBE_PROMPT};
