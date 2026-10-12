@@ -2,10 +2,15 @@
 from pathlib import Path
 from copy import deepcopy
 from datetime import datetime, timezone, timedelta
+import argparse
 import json
 import os
 import re
 from playwright.sync_api import sync_playwright, expect
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--settings-only', action='store_true', help='Generate only the compatibility settings screenshot')
+args = parser.parse_args()
 
 root = Path(__file__).resolve().parent.parent
 output = root / 'docs/images'
@@ -54,7 +59,8 @@ with sync_playwright() as p:
     page.goto('http://127.0.0.1:19999/__codex_filter__/ui')
     expect(page.locator('#current')).to_have_text(providers[0]['name'])
     expect(page.locator('a.github-link')).to_have_count(2)
-    for view in ['providers', 'protection', 'history']:
+    screenshots = []
+    for view in ([] if args.settings_only else ['providers', 'protection', 'history']):
         if view == 'protection':
             state = configured_state
             page.locator('#refresh').click()
@@ -65,6 +71,24 @@ with sync_playwright() as p:
         page.locator('[data-view="' + view + '"]').click()
         page.evaluate('window.scrollTo(0,0)')
         page.screenshot(path=str(output / (view + '.png')))
+        screenshots.append(view + '.png')
+    state = deepcopy(configured_state)
+    state['guard'].update(providers={}, records=[], history=[])
+    settings_page = browser.new_page(viewport={'width': 1200, 'height': 1400}, timezone_id='Asia/Shanghai', device_scale_factor=2)
+    settings_page.on('pageerror', lambda error: errors.append(str(error)))
+    settings_page.route('**/*', route_request)
+    settings_page.goto('http://127.0.0.1:19999/__codex_filter__/ui')
+    expect(settings_page.locator('#guardEnabled')).to_have_attribute('aria-checked', 'false')
+    settings_page.locator('#providers tr').first.get_by_role('button', name='配置', exact=True).click()
+    expect(settings_page.locator('#drawer')).to_be_visible()
+    expect(settings_page.locator('#historyFilter')).to_be_checked()
+    expect(settings_page.locator('#preserveEncryptedInclude')).to_be_checked()
+    expect(settings_page.locator('#stripResponsesLiteHeader')).not_to_be_checked()
+    panel = settings_page.locator('.drawer-panel').bounding_box()
+    source = settings_page.locator('#drawerSource').bounding_box()
+    settings_page.screenshot(path=str(output / 'provider-settings.png'), clip={
+        'x': panel['x'], 'y': panel['y'], 'width': panel['width'], 'height': source['y'] + source['height'] + 20 - panel['y']})
+    screenshots.append('provider-settings.png')
     assert not errors, errors
     browser.close()
-print(json.dumps({'screenshots': ['providers.png', 'protection.png', 'history.png'], 'data': 'synthetic', 'modelRequests': 0}))
+print(json.dumps({'screenshots': screenshots, 'data': 'synthetic', 'modelRequests': 0}))
