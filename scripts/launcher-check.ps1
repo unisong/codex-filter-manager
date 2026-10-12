@@ -71,6 +71,53 @@ try {
         if ($savedWebRequest) { ${function:Invoke-WebRequest} = $savedWebRequest } else { Remove-Item Function:Invoke-WebRequest }
     }
 
+    # Exercise successful staging offline with a known local runtime and controlled integrity stub.
+    # The real published SHA-256 values are tested separately against nodejs.org at release time.
+    $archiveSource = Join-Path $scratch 'archive-fixture'
+    $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64' -or $env:PROCESSOR_ARCHITEW6432 -eq 'ARM64') { 'arm64' } else { 'x64' }
+    $distribution = 'node-v24.21.0-win-' + $arch
+    $distributionDir = Join-Path $archiveSource $distribution
+    New-Item -ItemType Directory -Path $distributionDir -Force | Out-Null
+    Copy-Item -LiteralPath $installedNode -Destination (Join-Path $distributionDir 'node.exe')
+    [IO.File]::WriteAllText((Join-Path $distributionDir 'LICENSE'), 'Offline launcher fixture, not a redistributed runtime license.')
+    $fixtureZip = Join-Path $scratch 'runtime-fixture.zip'
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    Add-Type -AssemblyName System.IO.Compression
+    $fixtureArchive = [IO.Compression.ZipFile]::Open($fixtureZip, [IO.Compression.ZipArchiveMode]::Create)
+    try {
+        foreach ($name in @('node.exe', 'LICENSE')) { [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($fixtureArchive, (Join-Path $distributionDir $name), ($distribution + '/' + $name)) | Out-Null }
+    } finally { $fixtureArchive.Dispose() }
+    function Test-FilterNode {
+        param([string]$Path)
+        if (-not $Path.StartsWith($scratch, [StringComparison]::OrdinalIgnoreCase)) { return $false }
+        return & $savedNodeTest $Path
+    }
+    function Invoke-WebRequest {
+        param([switch]$UseBasicParsing, $Uri, $OutFile, $TimeoutSec)
+        $script:downloadCalls++
+        Copy-Item -LiteralPath $fixtureZip -Destination $OutFile
+    }
+    function Get-FileHash {
+        param($LiteralPath, $Algorithm)
+        if ($Algorithm -ne 'SHA256') { throw 'Unexpected integrity algorithm.' }
+        $hash = if ($arch -eq 'arm64') { '8779b1bde1d39f8d420e3b57aa657b39891af434d3de44a919044cec06785921' }
+            else { '158f7685b44de51f6c0df1d153526cbcd3e1bc739a8dfc607721cef75de9e541' }
+        return @{Hash = $hash}
+    }
+    try {
+        $downloadCountBefore = $script:downloadCalls
+        $privateNode = Get-FilterNode
+        if (-not $privateNode.StartsWith((Join-Path $scratch '.tools'), [StringComparison]::OrdinalIgnoreCase)) { throw 'Successful install did not use private directory.' }
+        if ((Get-FilterNode -NoDownload) -ne $privateNode -or $script:downloadCalls -ne $downloadCountBefore + 1) { throw 'Private runtime was not reused.' }
+        if (Get-ChildItem -LiteralPath (Join-Path $scratch '.tools') -Filter '.install-*') { throw 'Successful staging was not cleaned.' }
+        if (-not (Test-Path -LiteralPath (Join-Path (Split-Path $privateNode -Parent) 'LICENSE'))) { throw 'Runtime license was not extracted.' }
+        $checks.Add('offline staged install extracts runtime/license atomically and reuses without download')
+    } finally {
+        ${function:Test-FilterNode} = $savedNodeTest
+        Remove-Item Function:Get-FileHash
+        if ($savedWebRequest) { ${function:Invoke-WebRequest} = $savedWebRequest } else { Remove-Item Function:Invoke-WebRequest }
+    }
+
     $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
     $listener.Start()
     $fixturePort = $listener.LocalEndpoint.Port
