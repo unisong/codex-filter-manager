@@ -11,10 +11,12 @@ from playwright.sync_api import sync_playwright, expect
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--settings-only', action='store_true', help='Generate only the compatibility settings screenshot')
+parser.add_argument('--theme', choices=['light', 'dark'], default='light', help='Appearance used for screenshots')
+parser.add_argument('--output', type=Path, help='Optional directory for review screenshots')
 args = parser.parse_args()
 
 root = Path(__file__).resolve().parent.parent
-output = root / 'docs/images'
+output = args.output or root / 'docs/images'
 output.mkdir(parents=True, exist_ok=True)
 html = (root / 'dashboard.html').read_text(encoding='utf-8').replace('__FILTER_TOKEN_JSON__', '"demo-only"')
 version = int(re.search(r'FILTER_VERSION\s*=\s*(\d+)', (root / 'proxy.cjs').read_text(encoding='utf-8')).group(1))
@@ -50,6 +52,7 @@ state['guard'].update(providers={}, records=[], currentRecords=[], history=[])
 with sync_playwright() as p:
     browser = p.chromium.launch(headless=True, **({'executable_path': os.environ['CHROME_PATH']} if os.environ.get('CHROME_PATH') else {}))
     page = browser.new_page(viewport={'width': 1440, 'height': 1180}, timezone_id='Asia/Shanghai', device_scale_factor=1)
+    page.add_init_script("localStorage.setItem('codex-filter-theme', " + json.dumps(args.theme) + ");")
     errors = []
     page.on('pageerror', lambda error: errors.append(str(error)))
     def route_request(route):
@@ -78,12 +81,15 @@ with sync_playwright() as p:
             expect(page.locator('#currentHistoryEnabled')).to_have_attribute('aria-checked', 'false')
             expect(page.locator('#guardEnabled')).to_have_attribute('aria-checked', 'false')
         page.locator('[data-view="' + view + '"]').click()
+        expect(page.locator('#refresh')).to_have_attribute('aria-busy', 'false')
+        page.locator('#toast').evaluate('(element) => { element.hidden = true; }')
         page.evaluate('window.scrollTo(0,0)')
         page.screenshot(path=str(output / (view + '.png')))
         screenshots.append(view + '.png')
     state = deepcopy(configured_state)
     state['guard'].update(providers={}, records=[], currentRecords=[], history=[])
     settings_page = browser.new_page(viewport={'width': 1200, 'height': 1400}, timezone_id='Asia/Shanghai', device_scale_factor=2)
+    settings_page.add_init_script("localStorage.setItem('codex-filter-theme', " + json.dumps(args.theme) + ");")
     settings_page.on('pageerror', lambda error: errors.append(str(error)))
     settings_page.route('**/*', route_request)
     settings_page.goto('http://127.0.0.1:19999/__codex_filter__/ui')
@@ -100,4 +106,4 @@ with sync_playwright() as p:
     screenshots.append('provider-settings.png')
     assert not errors, errors
     browser.close()
-print(json.dumps({'screenshots': screenshots, 'data': 'synthetic', 'modelRequests': 0}))
+print(json.dumps({'screenshots': screenshots, 'theme': args.theme, 'data': 'synthetic', 'modelRequests': 0}))

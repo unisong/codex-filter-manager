@@ -52,6 +52,47 @@ with tempfile.TemporaryDirectory(prefix='codex-filter-ui-') as scratch:
             assert page.locator('#error').is_hidden()
             assert page.locator('#current').inner_text() == '演示供应商-Codex'
             assert page.locator('#providers img').count() == 0
+            # Hold state reads to exercise a click joining an automatic refresh.
+            page.evaluate('''() => {
+                window.refreshTest = {original: window.fetch, pending: [], calls: 0, snapshot: JSON.stringify(state)};
+                window.fetch = (url, options) => {
+                    if (String(url).endsWith('/api/state')) {
+                        refreshTest.calls++;
+                        return new Promise(resolve => refreshTest.pending.push(resolve));
+                    }
+                    return refreshTest.original(url, options);
+                };
+                void refresh();
+            }''')
+            page.locator('#refresh').click()
+            expect(page.locator('#refresh')).to_have_text('刷新中…')
+            expect(page.locator('#refresh')).to_have_attribute('aria-busy', 'true')
+            expect(page.locator('#refresh')).to_be_disabled()
+            expect(page.locator('#toast')).to_have_text('正在刷新供应商列表…')
+            assert page.evaluate('refreshTest.calls') == 1, 'Manual click duplicated the ongoing state read'
+            page.evaluate('''() => {
+                document.getElementById('refresh').dispatchEvent(new MouseEvent('click'));
+                refreshTest.pending.shift()(new Response(refreshTest.snapshot, {headers: {'content-type': 'application/json'}}));
+            }''')
+            expect(page.locator('#refresh')).to_be_enabled()
+            expect(page.locator('#refresh')).to_have_attribute('aria-busy', 'false')
+            expect(page.locator('#toast')).to_have_text('列表已刷新，共 5 个供应商')
+            assert page.evaluate('refreshTest.calls') == 1
+            page.locator('#refresh').click()
+            expect(page.locator('#refresh')).to_be_disabled()
+            page.evaluate('''() => refreshTest.pending.shift()(new Response(JSON.stringify({error: {message: '模拟连接失败'}}), {
+                status: 503, headers: {'content-type': 'application/json'}
+            }))''')
+            expect(page.locator('#refresh')).to_be_enabled()
+            expect(page.locator('#toast')).to_have_text('刷新失败，请检查本地服务连接。')
+            expect(page.locator('#toast')).to_have_class('toast error')
+            expect(page.locator('#error')).to_be_visible()
+            # Automatic polling must stay quiet after a manual result.
+            page.evaluate('''() => { window.fetch = refreshTest.original; void refresh(); }''')
+            expect(page.locator('#error')).to_be_hidden()
+            expect(page.locator('#toast')).to_have_text('刷新失败，请检查本地服务连接。')
+            page.locator('#refresh').click()
+            expect(page.locator('#toast')).to_have_text('列表已刷新，共 5 个供应商')
             page.get_by_role('switch', name='演示供应商-Codex 历史过滤', exact=True).click()
             expect(page.get_by_role('switch', name='演示供应商-Codex 历史过滤', exact=True)).to_have_attribute('aria-checked', 'true')
             expect(page.locator('#refresh')).to_be_enabled()
@@ -101,7 +142,7 @@ with tempfile.TemporaryDirectory(prefix='codex-filter-ui-') as scratch:
             assert not errors, errors
             browser.close()
         assert hashlib.sha256(db.read_bytes()).hexdigest() == before_hash, 'CC Switch DB changed'
-        print(json.dumps({'passed': True, 'checks': ['toggle', 'search', 'configure', 'persist', 'disable', 'reset', 'alias-switch', 'tabs', 'mobile-layout', 'no-page-errors', 'CCS-database-unchanged']}, ensure_ascii=False))
+        print(json.dumps({'passed': True, 'checks': ['refresh-progress', 'refresh-joins-poll', 'refresh-no-duplicate-click', 'refresh-success', 'refresh-failure-recovery', 'quiet-auto-poll', 'toggle', 'search', 'configure', 'persist', 'disable', 'reset', 'alias-switch', 'tabs', 'mobile-layout', 'no-page-errors', 'CCS-database-unchanged']}, ensure_ascii=False))
     finally:
         proc.terminate()
         proc.wait(timeout=10)
