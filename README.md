@@ -240,3 +240,9 @@ npm test
 - **配套工具：[CC Switch](https://github.com/farion1231/cc-switch)**，需用户另外安装。本项目不会将其打包发行。
 
 第三方组件仍遵循各自许可证，详情见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。欢迎提交可复现的兼容性问题；反馈前请按排障文档移除个人信息与密钥。
+
+## 致谢
+
+感谢 [xqy2006/ModelTrace](https://github.com/xqy2006/ModelTrace) 的作者与贡献者开源模型行为指纹检测算法、出题器和参考库，为本项目的模型一致性检测与切断保护提供了核心支持。
+
+友情链接：[LINUX DO](https://linux.do/)
