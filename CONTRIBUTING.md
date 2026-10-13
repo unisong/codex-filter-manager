@@ -18,6 +18,8 @@
 | `management.cjs` | 本机管理 API、规则与页面 |
 | `dashboard.html` | 不依赖前端构建的可视化页面 |
 | `guard.cjs` | 指纹检查、通过缓存、锁定和检测历史 |
+| `guard-evidence.cjs` | 逐样本与汇总评分、数字证据结构校验 |
+| `guard-retry.cjs` | 整次检测共享重试预算与可取消退避 |
 | `guard-service.cjs` | 路由上下文、请求授权与引擎衔接 |
 | `guard-transport.cjs` | 探针请求、完整响应验证与缓存预算 |
 | `vendor/modeltrace/` | 固定版本的第三方出题器、评分器、参考库与许可 |
@@ -34,7 +36,7 @@ npm test
 ```powershell
 $env:PI_SCRATCH_DIR = Join-Path $env:TEMP 'codex-filter-tests'
 New-Item -ItemType Directory -Force $env:PI_SCRATCH_DIR | Out-Null
-node --test filter.test.cjs legacy-model-alias.test.cjs management.test.cjs guard.test.cjs guard-service.test.cjs guard-transport.test.cjs guard-integration.test.cjs guard-e2e.test.cjs
+node --test *.test.cjs
 ```
 
 浏览器测试是可选的开发工具，需另行准备 Python 和 Playwright。运行 `python -m playwright install chromium` 安装测试浏览器；也可通过环境变量 `CHROME_PATH` 指向本机 Chrome 可执行文件。测试默认使用 Playwright 管理的 Chromium。

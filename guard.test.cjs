@@ -97,7 +97,7 @@ test('failed checks reject retry bursts without probes or duplicate history unti
     assert.equal(error.code, 'guard_unverified');
     assert.equal(error.retryAfterSeconds, FAILURE_COOLDOWN_SECONDS);
     assert.match(error.message, /冷却中/);
-    assert.match(error.message, /指纹差异不够明确/);
+    assert.match(error.message, /未达到请求模型的通过条件/);
     return true;
   })));
   assert.equal(f.count(), 3);

@@ -1,10 +1,12 @@
 {
   "name": "codex-filter-manager",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": true,
   "description": "Local CC Switch / Codex history compatibility and model fingerprint protection manager",
   "license": "MIT",
-  "engines": {"node": ">=24"},
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "start": "node filter.cjs start",
     "stop": "node filter.cjs stop",

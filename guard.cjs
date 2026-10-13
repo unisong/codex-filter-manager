@@ -3,6 +3,8 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const {createHash, randomBytes, randomUUID} = require('node:crypto');
+const {analyzeSamples, validateEvidence} = require('./guard-evidence.cjs');
+const {probeWithRetry} = require('./guard-retry.cjs');
 
 const DEFAULT_POLICY = Object.freeze({enabled: false, ttlSeconds: 600});
 const MAX_HISTORY = 100;
@@ -140,6 +142,11 @@ function createGuard({runtime, probe, log = () => {}, onBlock = () => {}, now = 
     if (Object.hasOwn(record, 'retryAt')) {
       if (record.retryAt !== null && (typeof record.retryAt !== 'string' || !Number.isFinite(Date.parse(record.retryAt)))) throw new Error('invalid_retry_date');
       clean.retryAt = record.retryAt;
+    }
+    if (Object.hasOwn(record, 'sampleEvidence')) {
+      if (!Array.isArray(record.sampleEvidence) || record.sampleEvidence.length > 2
+          || !record.sampleEvidence.every(validateEvidence)) throw new Error('invalid_sample_evidence');
+      clean.sampleEvidence = structuredClone(record.sampleEvidence);
     }
     return clean;
   };
@@ -311,6 +318,7 @@ function createGuard({runtime, probe, log = () => {}, onBlock = () => {}, now = 
     const record = {...clean, status: 'blocked', reason: text(reason), checkedAt: iso(now()), expiresAt: null,
       prediction: typeof actualModel === 'string' ? text(actualModel, 256) : previous?.prediction || null,
       score: previous?.score ?? null, gap: previous?.gap ?? null, rounds: previous?.rounds || 0};
+    if (!recordHistory && previous?.sampleEvidence) record.sampleEvidence = structuredClone(previous.sampleEvidence);
     blocks.set(clean.key, record); records.set(clean.key, record);
     // Probe runs append their single final result in run(). Only a business
     // response creates an independent event here, once per newly created lock.
@@ -348,7 +356,7 @@ function createGuard({runtime, probe, log = () => {}, onBlock = () => {}, now = 
     log('guard-cleared', {key});
   }
 
-  async function scoreRound(context, signal, progress) {
+  async function scoreRound(context, signal, progress, retryBudget) {
     const outputs = [];
     const scorer = require(path.join(ARTIFACT_ROOT, 'fingerprint-core.mjs'));
     // Use the same pinned challenge generator as ModelTrace's browser UI.
@@ -356,9 +364,9 @@ function createGuard({runtime, probe, log = () => {}, onBlock = () => {}, now = 
     // one upstream slot and stops spending as soon as a sample is invalid.
     for (const [index, challenge] of generateChallenges(3).entries()) {
       if (signal.aborted) throw failure('guard_unverified', '检测已取消。');
-      progress(index + 1);
       let output;
-      try { output = await probe({context, signal, prompt: challenge.prompt}); }
+      try { output = await probeWithRetry({probe, context, signal, prompt: challenge.prompt, budget: retryBudget,
+        onProgress: retry => progress(index + 1, retry)}); }
       catch (error) {
         if (error.code === 'guard_unverified') throw failure(error.code, '第 ' + (index + 1) + '/3 个样本：' + text(error.message));
         throw error;
@@ -372,18 +380,33 @@ function createGuard({runtime, probe, log = () => {}, onBlock = () => {}, now = 
       const count = scorer.parseNumbers(output.text).length;
       const minimum = Math.max(80, Math.ceil(challenge.expected_count * 0.55));
       if (count < minimum || count > challenge.expected_count * 2) {
+        const diagnosis = count === 0 ? (output.text.trim()
+          ? '正文不含可识别的 1–355 阿拉伯数字（提取到 ' + output.text.length + ' 个字符）。'
+          : '未提取到非空正文。') : '';
         throw failure('guard_unverified', '第 ' + (index + 1) + '/3 个样本数字不足或异常：要求 '
           + challenge.expected_count + ' 个，收到 ' + count + ' 个有效数字，至少需要 ' + minimum
-          + ' 个。未完成本轮评分，这不是降智结论。');
+          + ' 个。' + diagnosis + '本轮检测不通过，未完成指纹评分；样本无效本身不能证明模型降智。');
       }
       outputs.push({text: output.text, expected_count: challenge.expected_count});
     }
-    return classify(await (analyze ? analyze(outputs, bank) : scorer.analyzeGlobalOutputs(outputs, bank)), context.model);
+    // The injected analyzer is a trusted test seam. Production always checks
+    // each sample as well as the aggregate; an average can hide a mixed route.
+    if (analyze) return classify(await analyze(outputs, bank), context.model);
+    const {result, evidence} = analyzeSamples(outputs, bank, context.model);
+    const verdict = classify(result, context.model);
+    if (evidence.flags.repeatedSamples) return {...verdict, outcome: 'unverified', evidence,
+      reason: '不同题目返回了完全重复的数字样本，不能视为三份独立证据，未能验证模型一致性。'};
+    if (verdict.outcome !== 'difference' && evidence.flags.conflictingSamples) return {...verdict,
+      outcome: 'unverified', evidence,
+      reason: '单个样本强烈指向其他模型，存在样本冲突；汇总分不能覆盖该异常，未能验证模型一致性。'};
+    return {...verdict, evidence};
   }
 
   async function run(context, settings, startedGeneration, controller, force) {
     const previousBlock = blocks.get(context.key);
     let rounds = 0, result, completedRecord, timedOut = false;
+    const sampleEvidence = [];
+    const retryBudget = {used: 0};
     const signal = controller.signal;
     const checkCurrent = () => {
       checkHealthy();
@@ -403,10 +426,10 @@ function createGuard({runtime, probe, log = () => {}, onBlock = () => {}, now = 
     const work = (async () => {
       checkCurrent();
       if (!previousBlock) put(context, {status: 'checking', reason: '正在检测三个独立数字样本。'});
-      const progress = round => sample => {
+      const progress = round => (sample, retry) => {
         checkCurrent();
         const flight = flights.get(context.key);
-        if (flight?.controller === controller) flight.progress = {round, sample, samplesPerRound: 3};
+        if (flight?.controller === controller) flight.progress = {round, sample, samplesPerRound: 3, ...retry};
         const record = records.get(context.key);
         // Progress is transient; persist only meaningful state transitions and
         // final evidence rather than rewriting the history file for each sample.
@@ -414,25 +437,47 @@ function createGuard({runtime, probe, log = () => {}, onBlock = () => {}, now = 
           status: round === 1 ? 'checking' : 'suspect', rounds: round - 1,
           reason: '第 ' + round + ' 轮：正在采集第 ' + sample + '/3 个独立样本（每个最多等待 180 秒）。'});
       };
-      result = await scoreRound(context, signal, progress(1)); rounds = 1; checkCurrent();
+      const collectRound = async round => {
+        const {evidence, ...verdict} = await scoreRound(context, signal, progress(round), retryBudget);
+        if (evidence) sampleEvidence.push(evidence);
+        return verdict;
+      };
+      result = await collectRound(1); rounds = 1; checkCurrent();
+      if (result.outcome === 'unverified' && result.reason) {
+        // Revoke output admitted before this manual recheck, even if the
+        // transient conflict is resolved before the watcher next polls.
+        keyGenerations.set(context.key, keyGeneration(context.key) + 1);
+        throw failure('guard_unverified', result.reason);
+      }
       if (result.outcome === 'difference') {
         // Revoke already-admitted output permanently for this check epoch. A
         // quick inconclusive confirmation must not erase the brief suspect state
         // before the service's cancellation watcher has had time to observe it.
         keyGenerations.set(context.key, keyGeneration(context.key) + 1);
-        if (!previousBlock) put(context, {...result, status: 'suspect', rounds,
+        if (!previousBlock) put(context, {...result, ...(sampleEvidence.length ? {sampleEvidence} : {}), status: 'suspect', rounds,
           reason: '发现指纹差异信号，正在用三个新样本复核。'});
-        const confirmation = await scoreRound(context, signal, progress(2)); rounds = 2; checkCurrent();
+        const confirmation = await collectRound(2); rounds = 2; checkCurrent();
+        if (sampleEvidence.length === 2 && sampleEvidence[1].samples.some(current =>
+          sampleEvidence[0].samples.some(previous => current.numbers.length === previous.numbers.length
+            && current.numbers.every((number, index) => number === previous.numbers[index])))) {
+          throw failure('guard_unverified', '复核返回了与首轮完全重复的数字样本，不能视为独立复核，未能验证模型一致性。');
+        }
         if (confirmation.outcome === 'difference' && confirmation.prediction === result.prediction) {
           result = confirmation;
           // Store score detail before making the durable latch.
-          put(context, {...result, status: 'suspect', rounds, reason: '两轮检测得到相同差异候选。'});
+          put(context, {...result, ...(sampleEvidence.length ? {sampleEvidence} : {}), status: 'suspect', rounds, reason: '两轮检测得到相同差异候选。'});
           block(context, '两轮独立数字指纹均与请求模型明显不一致，已锁定供应商的此模型。此结果不是推理能力评分或身份确证。', result.prediction, false);
           throw failure('guard_blocked', blocks.get(context.key).reason);
         }
-        throw failure('guard_unverified', '两轮指纹结果没有达成一致，不能确认模型；本次请求未放行。');
+        const confirmationReason = confirmation.prediction === result.prediction
+          ? '复核仍最接近 ' + confirmation.prediction + '（匹配分 ' + confirmation.score.toFixed(3)
+            + '），但未满足强差异条件（候选 ≥ 0.8、请求模型 ≤ 0.15、差值 ≥ 0.65）；检测不通过，暂不新增持久锁定。'
+          : '首轮最接近 ' + result.prediction + '，复核最接近 ' + confirmation.prediction
+            + '；候选发生变化，首轮差异仍保留。检测不通过，暂不新增持久锁定。';
+        throw failure('guard_unverified', confirmation.reason || confirmationReason);
       }
-      if (result.outcome !== 'passed') throw failure('guard_unverified', '指纹差异不够明确，不能确认请求模型；本次请求未放行。');
+      if (result.outcome !== 'passed') throw failure('guard_unverified', '本轮最接近 ' + result.prediction
+        + '（匹配分 ' + result.score.toFixed(3) + '），未达到请求模型的通过条件；检测不通过，暂不能确认替代模型。');
       checkCurrent();
       if (blocks.has(context.key) && (!force || blocks.get(context.key) !== previousBlock)) {
         throw failure('guard_blocked', blocks.get(context.key).reason);
@@ -440,8 +485,8 @@ function createGuard({runtime, probe, log = () => {}, onBlock = () => {}, now = 
       if (force) blocks.delete(context.key);
       cooldowns.delete(context.key);
       const expires = now() + settings.ttlSeconds * 1000;
-      const record = put(context, {...result, status: 'passed', rounds, expiresAt: iso(expires),
-        reason: '数字指纹与请求模型相符；这不能证明推理质量或实际项目响应的身份。'});
+      const record = put(context, {...result, ...(sampleEvidence.length ? {sampleEvidence} : {}), status: 'passed', rounds, expiresAt: iso(expires),
+        reason: '本次独立样本的汇总指纹匹配，未见单样本强差异；不证明实际会话使用同一后端，也不证明推理质量。'});
       completedRecord = record;
       passes.set(context.key, {...record, expires, generation: startedGeneration});
       log('guard-passed', {providerId: context.providerId, model: context.model, rounds});
@@ -460,7 +505,8 @@ function createGuard({runtime, probe, log = () => {}, onBlock = () => {}, now = 
       }
       const details = {status: 'unverified', reason: error.code?.startsWith('guard_') ? text(error.message)
         : '检测连接或评分失败，未能验证；这不代表模型降智。', rounds,
-        prediction: result?.prediction || null, score: result?.score ?? null, gap: result?.gap ?? null};
+        prediction: result?.prediction || null, score: result?.score ?? null, gap: result?.gap ?? null,
+        ...(sampleEvidence.length ? {sampleEvidence} : {})};
       if (!cancelled && !blocks.has(context.key) && !fatal && generation(context.providerId) === startedGeneration) {
         details.retryAt = rememberFailure(context, error.code === 'guard_unsupported' ? error.code : 'guard_unverified', details.reason);
         put(context, details);
@@ -526,7 +572,7 @@ function createGuard({runtime, probe, log = () => {}, onBlock = () => {}, now = 
       const cacheValid = !!(record.status === 'passed' && !fatal && settings.enabled
         && !blocks.has(record.key) && !flights.has(record.key) && passed
         && passed.generation === generation(record.providerId) && passed.expires > now());
-      const copy = {...record, cacheValid, retryAt: record.retryAt || null, cooldownActive: false, retryAfterSeconds: 0};
+      const copy = {...structuredClone(record), cacheValid, retryAt: record.retryAt || null, cooldownActive: false, retryAfterSeconds: 0};
       const cooldown = activeCooldown(record.key);
       if (cooldown && !fatal && settings.enabled && !blocks.has(record.key) && !flights.has(record.key)) {
         Object.assign(copy, {cooldownActive: true, retryAt: iso(cooldown.until),
@@ -541,7 +587,7 @@ function createGuard({runtime, probe, log = () => {}, onBlock = () => {}, now = 
       return copy;
     }).sort((a, b) => String(b.checkedAt || '').localeCompare(String(a.checkedAt || '')));
     return {models: [...models], providers: Object.fromEntries(providers), records: visible,
-      history: history.map(entry => ({...entry})), historyLimit: MAX_HISTORY, failureCooldownSeconds: FAILURE_COOLDOWN_SECONDS,
+      history: structuredClone(history), historyLimit: MAX_HISTORY, failureCooldownSeconds: FAILURE_COOLDOWN_SECONDS,
       checking: [...flights.values()].map(entry => ({...safeContext(entry.context), ...(entry.progress ? {progress: {...entry.progress}} : {})})), ...(fatal ? {error: fatal} : {})};
   }
 

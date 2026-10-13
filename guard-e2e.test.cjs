@@ -147,7 +147,9 @@ test('unsupported upstream model fails closed once, survives retries and restart
 test('upstream concurrency errors do not amplify automatic probes or history while cooling down',async t=>{
   const f=await fixture(t);f.configure({enabled:true,ttlSeconds:1800});
   f.probeFailure({status:429,body:{error:{code:'concurrency_queued',message:'All concurrency slots are busy'}}});
-  assert.equal((await f.call()).status,409);
+  const first=await f.call();assert.equal(first.status,200);assert.match(first.body,/event: error/);
+  assert.doesNotMatch(first.body,/PROJECT_TOOL_OUTPUT|PROJECT_RESULT/);
+  assert.equal(f.events.length,4);
   const probes=f.events.length,history=(await f.state()).history;
   assert.equal(history.length,1);assert.match(history[0].reason,/429/);
   const retries=await Promise.all(Array.from({length:8},()=>f.call()));

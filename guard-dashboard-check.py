@@ -28,13 +28,14 @@ state = {
               "configured": {"model": "gpt-6-astra", "effort": "high"}, "failureCooldownSeconds": 60,
               "current": {"providerId": "gugu", "model": "gpt-6-astra", "effort": "high", "available": True, "key": "fixture-key", "modelSource": "config", "routeRevision": "route-0"}},
 }
+fixture_evidence = json.loads(subprocess.check_output(["node", "scripts/guard-fixtures.cjs"], cwd=root, text=True))
 calls = []
 server_token = "offline-ui-test"
 ui_loads = 0
 revision_counter = 0
 fail_next_state = False
 now = datetime.now(timezone.utc)
-record = {"key": "fixture-key", "providerId": "gugu", "providerName": "演示供应商", "model": "gpt-6-astra", "effort": "high", "status": "checking", "reason": "正在采样", "checkedAt": now.isoformat(), "expiresAt": (now + timedelta(minutes=10)).isoformat(), "rounds": 0}
+record = {"key": "fixture-key", "providerId": "gugu", "providerName": "演示供应商", "model": "gpt-6-astra", "effort": "high", "status": "checking", "reason": "正在采样", "checkedAt": now.isoformat(), "expiresAt": (now + timedelta(minutes=10)).isoformat(), "rounds": 0, "sampleEvidence": [deepcopy(fixture_evidence["pass"])]}
 
 def select_view(page, view):
     page.locator("#view" + view.capitalize()).click()
@@ -177,15 +178,29 @@ with sync_playwright() as p:
     expect(page.locator("#guardEvidence")).to_contain_text("第 1 轮 · 正在采集第 2/3 个样本")
     expect(page.locator("#guardActionNote")).to_contain_text("整次最多 10 分钟")
     state["guard"]["checking"] = []
-    state["guard"]["records"][0].update(status="passed", reason="指纹一致", prediction="gpt-6-astra", score=0.92, rounds=1)
-    expect(page.locator("#guardBadge")).to_have_text("指纹一致", timeout=4000)
+    state["guard"]["records"][0].update(status="passed", reason="指纹一致", prediction="gpt-6-astra", score=0.92, rounds=1, cacheValid=True)
+    expect(page.locator("#guardBadge")).to_have_text("独立样本匹配", timeout=4000)
     expect(page.locator("#guardEvidence")).to_contain_text("非概率")
-    expect(page.locator("#guardCheckedAt")).to_contain_text("结果到期")
+    expect(page.locator("#guardProtectionState")).to_contain_text("结果可复用")
+    evidence_panel = page.locator("#guardSampleEvidence details")
+    evidence_panel.locator("summary").click()
+    expect(evidence_panel.locator("textarea")).to_have_count(3)
+    evidence_panel.locator("textarea").first.evaluate("el => {window.savedEvidenceElement=el;el.focus();el.setSelectionRange(3,12);}")
+    page.locator("#refresh").click()
+    expect(evidence_panel).to_have_js_property("open", True)
+    assert page.evaluate("window.savedEvidenceElement===document.querySelector('#guardSampleEvidence textarea')")
+    with page.expect_download() as download_info:
+        evidence_panel.get_by_role("button", name="下载本条样本 JSON", exact=True).click()
+    exported = json.loads(Path(download_info.value.path()).read_text(encoding="utf-8"))
+    assert set(exported) == {"schemaVersion", "sampling", "model", "effort", "checkedAt", "status", "sampleEvidence"}
+    assert len(exported["sampleEvidence"][0]["samples"]) == 3
+    assert not any(key in json.dumps(exported) for key in ["providerId", "providerName", "authorization", "endpoint", "fixture-key"])
+    evidence_panel.locator("summary").click()
     state["guard"]["records"][0].update(cacheValid=False, cacheReason="已设置每次请求检测，下次请求仍须重新检测。")
     page.locator("#refresh").click()
     expect(page.locator("#guardBadge")).to_have_text("等待重新检测")
-    expect(page.locator("#guardVerdict")).to_have_text("指纹一致")
-    expect(page.locator("#guardCheckedAt")).to_contain_text("每次请求检测")
+    expect(page.locator("#guardVerdict")).to_have_text("通过 · 样本匹配")
+    expect(page.locator("#guardProtectionState")).to_contain_text("下次请求前须重新检测")
     state["guard"]["records"][0].update(cacheValid=True)
     before_cooling_calls = len([call for call in calls if call[1] == "/api/guard/check"])
     saved_pass = deepcopy(state["guard"]["records"][0])
@@ -196,10 +211,40 @@ with sync_playwright() as p:
     expect(page.locator("#guardTest")).to_be_enabled()
     assert len([call for call in calls if call[1] == "/api/guard/check"]) == before_cooling_calls
     state["guard"]["records"][0] = saved_pass
+    # Severity follows evidence; disabled protection stays neutral.
+    color_cases = [
+        ("HTTP 403：上游拒绝访问", [], "不通过 · 上游拒绝访问（403）", "warn"),
+        ("第 1/3 个样本数字不足", [], "不通过 · 样本无效", "warn"),
+        ("复核仍最接近替代模型", [fixture_evidence["different"]], "不通过 · 明显模型差异", "bad"),
+        ("样本冲突", [fixture_evidence["conflict"]], "不通过 · 模型异常（样本冲突）", "bad"),
+    ]
+    for reason, evidence, label, tone in color_cases:
+        current_record = {**deepcopy(saved_pass), "status": "unverified", "reason": reason, "sampleEvidence": deepcopy(evidence)}
+        state["guard"]["records"] = [current_record]
+        state["guard"]["history"] = [{**deepcopy(current_record), "id": "color-history", "source": "manual"}]
+        page.locator("#refresh").click()
+        expect(page.locator("#guardVerdict")).to_have_text(label)
+        expect(page.locator("#guardVerdict")).to_have_class("guard-result " + tone)
+        expect(page.locator("#guardBadge")).to_have_class("guard-state " + tone)
+        expect(page.locator("#guardAlert")).to_have_class("guard-banner" + (" warn" if tone == "warn" else ""))
+        expect(page.locator("#guardHistory .guard-state")).to_have_class("guard-state " + tone)
+    state["guard"]["providers"]["gugu"]["enabled"] = False
+    page.locator("#refresh").click()
+    expect(page.locator("#guardBadge")).to_have_text("未开启")
+    expect(page.locator("#guardBadge")).not_to_have_class(re.compile("bad|warn"))
+    expect(page.locator("#guardVerdict")).to_have_class("guard-result bad")
+    expect(page.locator("#guardProtectionState")).to_contain_text("不拦截项目请求")
+    state["guard"]["providers"]["gugu"]["enabled"] = True
+    legacy_record = {**deepcopy(saved_pass), "sampleEvidence": []}
+    state["guard"]["records"] = [legacy_record]
+    page.locator("#refresh").click()
+    expect(page.locator("#guardVerdict")).to_have_text("旧版结果 · 未逐样本校验")
+    state["guard"]["records"] = [saved_pass]
+    state["guard"]["history"] = []
     state["guard"]["current"].update(available=False, reason="路由切换中")
     page.locator("#refresh").click()
     expect(page.locator("#guardBadge")).to_have_text("未能验证")
-    expect(page.locator("#guardVerdict")).to_have_text("指纹一致")
+    expect(page.locator("#guardVerdict")).to_have_text("通过 · 样本匹配")
     expect(page.locator("#guardTest")).to_be_disabled()
     state["guard"]["current"]["available"] = True
 
@@ -358,7 +403,7 @@ with sync_playwright() as p:
     state["guard"]["history"] = [{**item, "id": f"success-history-{i}", "source": "manual"} for i, item in enumerate(success_records)]
     state["guard"]["current"] = {"providerId": "gugu", "model": "gpt-6-astra", "effort": "high", "available": True, "key": "success-0"}
     page.locator("#refresh").click()
-    expect(page.locator("#guardVerdict")).to_have_text("指纹一致")
+    expect(page.locator("#guardVerdict")).to_have_text("通过 · 样本匹配")
     expect(page.locator("#guardLocksSection")).to_be_hidden()
     expect(page.locator("#guardRecords .guard-record")).to_have_count(0)
     select_view(page, "history")
@@ -409,18 +454,18 @@ with sync_playwright() as p:
     expect(page.locator("#guardHistory")).not_to_contain_text("已切断并锁定")
     expect(page.locator("#guardHistory")).not_to_contain_text("缓存")
     assert page.locator("#guardHistory img,#guardHistory svg").count() == 0
-    assert page.locator("#guardHistory button").count() == 0
+    assert page.locator("#guardHistory button").count() == page.locator("#guardHistory .guard-history-record").count()
     assert page.locator("#guardRecords button").count() == 0, "Historical block created an active clear action"
     first_detail = page.locator("#guardHistory .guard-history-details").first
     expect(first_detail).to_have_js_property("open", False)
     expect(page.locator("#guardHistory .guard-history-record").first.locator(".guard-record-meta").first).to_be_visible()
-    first_detail.get_by_text("查看说明", exact=True).click()
+    first_detail.locator("summary").click()
     expect(first_detail).to_have_js_property("open", True)
     expect(first_detail).to_contain_text("<svg onload=alert(1)> 历史内容")
     assert page.locator("#guardHistory img,#guardHistory svg").count() == 0
     page.locator("#refresh").click()
     expect(first_detail).to_have_js_property("open", True)
-    first_detail.get_by_text("查看说明", exact=True).click()
+    first_detail.locator("summary").click()
     assert page.locator("#guardHistoryMore,#guardHistoryCollapse").count() == 0
     before_history_writes = len([call for call in calls if call[0] != "GET"])
     page.locator("#guardHistoryNext").click()
@@ -428,7 +473,7 @@ with sync_playwright() as p:
     expect(page.locator("#guardHistoryCount")).to_have_text("第 11–20 条 · 共 45 条")
     expect(page.locator("#guardHistoryPage")).to_have_text("第 2 / 5 页")
     expect(page.locator("#guardHistory .guard-history-record").first).to_have_attribute("data-history-id", "history-10")
-    page.locator("#guardHistory .guard-history-details").first.get_by_text("查看说明", exact=True).click()
+    page.locator("#guardHistory .guard-history-details").first.locator("summary").click()
     # An older page stays anchored to its first record while new items arrive.
     state["guard"]["history"].insert(0, {**deepcopy(record), "id": "history-new", "source": "automatic", "status": "passed", "reason": "刷新期间新增的检测"})
     page.wait_for_timeout(6500)
@@ -576,11 +621,10 @@ for(const [id,name,current] of [['fixture','真实后端离线夹具',1],['secon
 db.close();
 fs.writeFileSync(configPath,'model="gpt-6-astra"\nmodel_reasoning_effort="high"\nmodel_provider="custom"\n[model_providers.custom]\nbase_url="http://127.0.0.1:1/v1"\n');
 fs.writeFileSync(path.join(runtime,'auth.json'),JSON.stringify({OPENAI_API_KEY:'local-test-placeholder'}));
-const sample=Array.from({length:300},(_,i)=>i+1).join(','),modeFile=path.join(runtime,'fixture-mode.txt');
+const {numbers}=require('./scripts/guard-fixtures.cjs');let sampleIndex=0;const modeFile=path.join(runtime,'fixture-mode.txt');
 fs.writeFileSync(modeFile,'pass');
 const guard=createGuardService({runtime,databasePath,configPath,getUpstream:()=> 'http://127.0.0.1:1',
- probe:async()=>{await new Promise(r=>setTimeout(r,100));return {text:sample,model:'gpt-6-astra'};},
- engineFactory: options=>createGuard({...options,analyze:()=>{const mismatch=fs.readFileSync(modeFile,'utf8')==='block';return {prediction:mismatch?'gpt-6-luna':'gpt-6-astra',used_outputs:3,diagnostics:Array.from({length:3},()=>({accepted:true})),results:[{model:mismatch?'gpt-6-luna':'gpt-6-astra',probability:.96},{model:mismatch?'gpt-6-astra':'gpt-6-luna',probability:.02}]};}})});
+ probe:async()=>{await new Promise(r=>setTimeout(r,100));const mismatch=fs.readFileSync(modeFile,'utf8')==='block';return {text:numbers(mismatch?'gpt-6-luna':'gpt-6-astra',sampleIndex++).join(','),model:'gpt-6-astra'};}});
 const management=createManagement({runtime,databasePath,guard});
 const server=makeProxy({token:'real-backend-ui',getUpstream:()=> 'http://127.0.0.1:1',dashboard:management,guard,getFilterPolicy:management.policy,getState:()=>({state:'filtering',currentPolicy:management.policy()})});
 server.listen(0,'127.0.0.1',()=>console.log('http://127.0.0.1:'+server.address().port+'/__codex_filter__/ui'));
@@ -606,13 +650,13 @@ with tempfile.TemporaryDirectory(prefix="codex-guard-ui-backend-") as scratch:
             select_view(page, "protection")
             expect(page.locator("#guardTest")).to_be_enabled()
             page.locator("#guardTest").click()
-            expect(page.locator("#guardVerdict")).to_have_text("指纹一致", timeout=6000)
+            expect(page.locator("#guardVerdict")).to_have_text("通过 · 样本匹配", timeout=6000)
             expect(page.locator("#guardHistory .guard-history-record")).to_have_count(1)
             expect(page.locator("#guardEnabled")).to_have_attribute("aria-checked", "false")
             expect(page.locator("#guardBadge")).to_have_text("未开启")
             page.locator("#guardEnabled").click()
             expect(page.locator("#guardBadge")).to_have_text("等待重新检测")
-            expect(page.locator("#guardVerdict")).to_have_text("指纹一致")
+            expect(page.locator("#guardVerdict")).to_have_text("通过 · 样本匹配")
             settings = json.loads((Path(scratch) / "model-guard.json").read_text(encoding="utf-8"))
             assert settings["providers"]["fixture"]["enabled"]
             assert not (Path(scratch) / "provider-rules.json").exists(), "Guard toggle changed history rules"
@@ -630,19 +674,19 @@ with tempfile.TemporaryDirectory(prefix="codex-guard-ui-backend-") as scratch:
             expect(page.locator("#guardVerdict")).to_have_text("等待检测")
             select_view(page, "history")
             expect(page.locator("#guardHistory .guard-history-record")).to_have_count(2)
-            assert page.locator("#guardHistory button").count() == 0
+            assert page.locator("#guardHistory button").count() == page.locator("#guardHistory .guard-history-record").count()
             select_view(page, "protection")
             (Path(scratch) / "fixture-mode.txt").write_text("pass", encoding="utf-8")
             page.locator("#guardTest").click()
-            expect(page.locator("#guardVerdict")).to_have_text("指纹一致", timeout=6000)
+            expect(page.locator("#guardVerdict")).to_have_text("通过 · 样本匹配", timeout=6000)
             expect(page.locator("#guardHistory .guard-history-record")).to_have_count(3)
             page.locator("#guardTtl").select_option("0")
             expect(page.locator("#guardBadge")).to_have_text("等待重新检测")
             page.locator("#guardTest").click()
-            expect(page.locator("#guardVerdict")).to_have_text("指纹一致", timeout=6000)
+            expect(page.locator("#guardVerdict")).to_have_text("通过 · 样本匹配", timeout=6000)
             expect(page.locator("#guardHistory .guard-history-record")).to_have_count(4)
             expect(page.locator("#guardBadge")).to_have_text("等待重新检测")
-            expect(page.locator("#guardCheckedAt")).to_contain_text("每次请求检测")
+            expect(page.locator("#guardProtectionState")).to_contain_text("下次请求前须重新检测")
             page.reload()
             select_view(page, "history")
             expect(page.locator("#guardHistory .guard-history-record")).to_have_count(4)
@@ -688,4 +732,4 @@ with tempfile.TemporaryDirectory(prefix="codex-guard-ui-backend-") as scratch:
         proc.terminate()
         proc.wait(timeout=10)
 
-print(json.dumps({"passed": True, "checks": ["version", "independent-provider-switch", "ttl", "manual-check", "checking-poll", "score-not-probability", "persistent-lock-ui", "clear-needs-recheck", "unsupported-model", "encoded-provider-id", "drawer-settings", "xss-escaping", "mobile-layout", "legacy-state", "fatal-state", "exact-route-record", "real-backend-manual-while-disabled", "real-backend-lock-clear-retest", "no-live-upstream", "stale-drawer-cas", "stale-token-get-recovery", "recovery-loop-limit", "expired-token-stops-polling", "expired-write-no-replay", "ttl-zero-history-kept", "unavailable-route-not-passed", "conflict-refresh-failure-truthful", "expired-write-chinese-message", "expired-get-preserves-open-draft", "invalid-current-provider-can-disable-only", "invalid-other-provider-can-disable-only", "all-old-locks-remain-visible", "old-lock-clear-exact-key-needs-recheck", "history-empty-cache-explanation", "history-same-key-multiple-results", "history-safe-text-source-labels", "history-independent-of-active-locks", "history-page-navigation-no-writes", "history-poll-preserves-page-anchor-details-no-duplicates", "history-100-entry-navigation", "legacy-backend-history-hidden", "real-backend-same-key-history-persisted", "successful-latest-records-not-duplicated", "disabled-provider-lock-labelled-inactive", "last-lock-clear-hides-section-preserves-history", "history-reason-details-collapsed-safe", "exclusive-default-provider-view", "keyboard-accessible-view-navigation", "poll-keeps-current-view", "sticky-mobile-navigation", "bounded-history-viewport", "history-shrink-clamps-page", "real-backend-quick-current-history-toggle-preserves-other-settings"]}, ensure_ascii=False))
+print(json.dumps({"passed": True, "checks": ["version", "independent-provider-switch", "ttl", "manual-check", "checking-poll", "score-not-probability", "persistent-lock-ui", "clear-needs-recheck", "unsupported-model", "encoded-provider-id", "drawer-settings", "xss-escaping", "mobile-layout", "legacy-state", "fatal-state", "exact-route-record", "real-backend-manual-while-disabled", "real-backend-lock-clear-retest", "no-live-upstream", "stale-drawer-cas", "stale-token-get-recovery", "recovery-loop-limit", "expired-token-stops-polling", "expired-write-no-replay", "ttl-zero-history-kept", "unavailable-route-not-passed", "conflict-refresh-failure-truthful", "expired-write-chinese-message", "expired-get-preserves-open-draft", "invalid-current-provider-can-disable-only", "invalid-other-provider-can-disable-only", "all-old-locks-remain-visible", "old-lock-clear-exact-key-needs-recheck", "history-empty-cache-explanation", "history-same-key-multiple-results", "history-safe-text-source-labels", "history-independent-of-active-locks", "history-page-navigation-no-writes", "history-poll-preserves-page-anchor-details-no-duplicates", "history-100-entry-navigation", "legacy-backend-history-hidden", "real-backend-same-key-history-persisted", "successful-latest-records-not-duplicated", "disabled-provider-lock-labelled-inactive", "last-lock-clear-hides-section-preserves-history", "history-reason-details-collapsed-safe", "exclusive-default-provider-view", "keyboard-accessible-view-navigation", "poll-keeps-current-view", "sticky-mobile-navigation", "bounded-history-viewport", "history-shrink-clamps-page", "real-backend-quick-current-history-toggle-preserves-other-settings", "sample-evidence-export-whitelist", "sample-evidence-poll-preserves-dom", "red-model-evidence-vs-yellow-403", "disabled-protection-neutral-badge", "legacy-pass-no-fabricated-validation"]}, ensure_ascii=False))

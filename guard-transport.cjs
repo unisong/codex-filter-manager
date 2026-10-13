@@ -11,6 +11,25 @@ function guardFailure(reason, code = 'guard_unverified') {
   const e = new Error(reason); e.code = code; e.status = 409; return e;
 }
 
+function transientFailure(reason) {
+  return Object.assign(guardFailure(reason), {retryable: true});
+}
+
+function upstreamFailure(status, body, retryAfter) {
+  const description = describeUpstreamError(status, body);
+  const error = guardFailure('检测上游返回 HTTP ' + status + '：' + description + '。未能验证，这不是降智结论。');
+  // A 429 can mean exhausted quota; a 503 can mean an unsupported model.
+  // Those permanent failures must not consume more paid probe attempts.
+  const permanent = /模型不可用|配额不足|认证失败|访问权限|拒绝访问|要求付费/.test(description);
+  error.retryable = !permanent && [408,429,500,502,503,504,520,522,524].includes(status);
+  if (typeof retryAfter === 'string' && retryAfter.trim()) {
+    const seconds = Number(retryAfter);
+    const delay = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(retryAfter) - Date.now();
+    if (Number.isFinite(delay) && delay > 0) error.retryAfterMs = Math.ceil(delay);
+  }
+  return error;
+}
+
 function sameModel(expected, actual) {
   return typeof actual === 'string' && (actual === expected
     || (actual.startsWith(expected + '-') && /^\d{4}-\d{2}-\d{2}$/.test(actual.slice(expected.length + 1))));
@@ -41,10 +60,13 @@ function createEventParser(onEvent) {
 }
 
 function responseText(response) {
-  if (typeof response?.output_text === 'string') return response.output_text;
-  return (response?.output || []).flatMap(item => Array.isArray(item.content) ? item.content : [])
+  // The completed response is authoritative. An empty convenience field must
+  // not hide a populated output array supplied by a compatible upstream.
+  const output = (Array.isArray(response?.output) ? response.output : []).flatMap(item => Array.isArray(item?.content) ? item.content : [])
     .filter(part => ['output_text', 'input_text', 'text'].includes(part.type) && typeof part.text === 'string')
     .map(part => part.text).join('\n');
+  if (output.trim()) return output;
+  return typeof response?.output_text === 'string' ? response.output_text : '';
 }
 
 function decodedStream(response) {
@@ -164,7 +186,12 @@ async function collectResponse(response, {expectedModel, signal, maxBytes = 16 *
       if (!event.response || event.response.status !== 'completed') throw guardFailure('上游完成状态无效。');
       complete = true; completedResponse = event.response;
     } else if (['error', 'response.failed', 'response.incomplete'].includes(event.type)) {
-      throw guardFailure('上游未完整完成响应，已拦截；这不是模型降智判定。');
+      const remote = event.response?.error || event.error;
+      const detail = remote || event.response?.incomplete_details;
+      const description = describeUpstreamError(0, JSON.stringify({error: detail || {code: event.code, message: event.message}}));
+      const error = guardFailure('上游未完整完成响应，已拦截；这不是模型降智判定。');
+      error.retryable = /并发名额|频率或并发超限|服务暂时不可用/.test(description);
+      throw error;
     }
     if (event.type === 'response.output_text.delta' && typeof event.delta === 'string') delta += event.delta;
   }
@@ -183,17 +210,24 @@ async function collectResponse(response, {expectedModel, signal, maxBytes = 16 *
       let parsed;
       try { parsed = JSON.parse(Buffer.concat(chunks).toString('utf8')); }
       catch { throw guardFailure('上游没有返回可验证的 Responses 内容。'); }
-      if (parsed.error || parsed.status !== 'completed') throw guardFailure('上游 JSON 响应未完整完成，已拦截。');
+      if (parsed?.error || ['failed', 'incomplete'].includes(parsed?.status)) {
+        inspect({type: parsed.status === 'incomplete' ? 'response.incomplete' : 'response.failed', response: parsed, error: parsed.error});
+      }
+      if (parsed?.status !== 'completed') throw guardFailure('上游 JSON 响应未完整完成，已拦截。');
       inspect({type: 'response.completed', response: parsed});
     }
-    if (!complete) throw guardFailure('响应在 response.completed 前结束，已拦截全部输出。');
+    if (!complete) throw transientFailure('响应在 response.completed 前结束，已拦截全部输出。');
     if (!lastModel) throw guardFailure('上游未提供模型标识，无法完成一致性校验。');
     if (signal?.aborted) throw guardFailure('请求已取消或模型被锁定。');
-    return {body: Buffer.concat(chunks), isSse, model: lastModel, text: delta || responseText(completedResponse)};
+    // Some upstreams send whitespace/partial deltas but put the full answer in
+    // response.completed. Never let those deltas shadow the final answer. When
+    // completed has no body, retain the ordinary delta-only streaming fallback.
+    const finalText = responseText(completedResponse);
+    return {body: Buffer.concat(chunks), isSse, model: lastModel, text: finalText.trim() ? finalText : delta};
   } catch (error) {
     response.destroy(); stream.destroy();
     if (error.code?.startsWith('guard_')) throw error;
-    throw guardFailure('上游连接异常，响应未能验证；请重新检测。');
+    throw transientFailure('上游连接异常，响应未能验证；请重新检测。');
   } finally {
     budget.bytes -= bytes;
     signal?.removeEventListener('abort', abort);
@@ -229,7 +263,7 @@ async function probe({context, signal, prompt, timeoutMs = PROBE_TIMEOUT_MS}) {
   signal?.addEventListener('abort', abort, {once: true});
   try {
     if (signal?.aborted) throw guardFailure('检测已取消。');
-    deadline = setTimeout(() => stop(guardFailure('单个检测样本等待超过 ' + (timeoutMs / 1000)
+    deadline = setTimeout(() => stop(transientFailure('单个检测样本等待超过 ' + (timeoutMs / 1000)
       + ' 秒，已停止；未能验证，这不是降智结论。')), timeoutMs);
     deadline.unref?.();
     response = await new Promise((resolve, reject) => {
@@ -241,8 +275,7 @@ async function probe({context, signal, prompt, timeoutMs = PROBE_TIMEOUT_MS}) {
     if (response.statusCode !== 200) {
       const errorBody = await readErrorBody(response, signal);
       if (signal?.aborted) throw guardFailure('检测已取消。');
-      throw guardFailure('检测上游返回 HTTP ' + response.statusCode + '：'
-        + describeUpstreamError(response.statusCode, errorBody) + '。未能验证，这不是降智结论。');
+      throw upstreamFailure(response.statusCode, errorBody, response.headers['retry-after']);
     }
     return await collectResponse(response, {expectedModel: context.model, signal, maxBytes: 2 * 1024 * 1024});
   } catch (error) {
@@ -250,7 +283,7 @@ async function probe({context, signal, prompt, timeoutMs = PROBE_TIMEOUT_MS}) {
     // of the original timeout. Keep the actual local cause for the dashboard.
     if (stopped) throw stopped;
     if (error.code?.startsWith('guard_')) throw error;
-    throw guardFailure('检测连接中断或无法建立；未收到可验证的完整响应，这不是降智结论。');
+    throw transientFailure('检测连接中断或无法建立；未收到可验证的完整响应，这不是降智结论。');
   } finally { clearTimeout(deadline); signal?.removeEventListener('abort', abort); }
 }
 

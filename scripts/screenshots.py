@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import re
+import subprocess
 from playwright.sync_api import sync_playwright, expect
 
 parser = argparse.ArgumentParser(description=__doc__)
@@ -17,6 +18,7 @@ output = root / 'docs/images'
 output.mkdir(parents=True, exist_ok=True)
 html = (root / 'dashboard.html').read_text(encoding='utf-8').replace('__FILTER_TOKEN_JSON__', '"demo-only"')
 version = int(re.search(r'FILTER_VERSION\s*=\s*(\d+)', (root / 'proxy.cjs').read_text(encoding='utf-8')).group(1))
+fixture_evidence = json.loads(subprocess.check_output(['node', 'scripts/guard-fixtures.cjs'], cwd=root, text=True))
 off = {'historyFilter': False, 'preserveEncryptedInclude': True, 'stripResponsesLiteHeader': False}
 providers = [
     {'id': 'demo-main', 'name': '演示供应商 · 日常开发', 'endpoint': 'https://api.example.com/v1', 'current': True, 'editable': True, 'source': 'custom', 'rule': {**off, 'historyFilter': True}},
@@ -25,9 +27,10 @@ providers = [
     {'id': 'demo-local', 'name': '本地测试端点', 'endpoint': 'http://127.0.0.1:19000/v1', 'current': False, 'editable': True, 'source': 'default', 'rule': off},
 ]
 now = datetime(2026, 10, 12, 6, 0, tzinfo=timezone.utc)
-record = {'key': 'demo-key', 'providerId': 'demo-main', 'providerName': providers[0]['name'], 'model': 'gpt-6-astra', 'effort': 'high', 'status': 'passed', 'reason': '演示数据：行为指纹与请求模型相符；不代表质量保证。', 'checkedAt': now.isoformat(), 'expiresAt': (now + timedelta(minutes=30)).isoformat(), 'prediction': 'gpt-6-astra', 'score': .936, 'rounds': 1, 'cacheValid': True}
+record = {'key': 'demo-key', 'providerId': 'demo-main', 'providerName': providers[0]['name'], 'model': 'gpt-6-astra', 'effort': 'high', 'status': 'passed', 'reason': '演示数据：行为指纹与请求模型相符；不代表质量保证。', 'checkedAt': now.isoformat(), 'expiresAt': (now + timedelta(minutes=30)).isoformat(), 'prediction': 'gpt-6-astra', 'score': .936, 'rounds': 1, 'cacheValid': True, 'sampleEvidence': [fixture_evidence['pass']]}
 history = [{**record, 'id': f'demo-history-{i}', 'source': 'manual' if i == 0 else 'automatic', 'checkedAt': (now - timedelta(minutes=30*i)).isoformat()} for i in range(24)]
-history[2].update(status='unverified', score=None, prediction=None, reason='演示数据：检测超时，受保护请求未放行。这不是确认降智。')
+history[1].update(status='unverified', prediction='gpt-6-luna', score=.999, sampleEvidence=[fixture_evidence['different']], reason='演示数据：已完成轮次有明显模型差异，复核未完成；没有新增持久锁定。')
+history[2].update(status='unverified', score=None, prediction=None, sampleEvidence=[], reason='检测上游返回 HTTP 403：上游拒绝访问。演示数据，这不是降智结论。')
 state = {'providers': providers, 'revision': 'demo-revision', 'currentPolicy': {'filter': True}, 'autoFailover': False,
     'aliasCompatibility': {'configured': False, 'enabled': False, 'activeCount': 0},
     'filter': {'filterVersion': version, 'state': 'filtering', 'stats': {'filteredRequests': 128, 'removedEncryptedContentItems': 436}},
