@@ -19,6 +19,7 @@ CC Switch 模式启动会接管当前用户的 Codex 配置；Magpie 模式安�
 | `magpie-plugin/` | 原生请求钩子及与独立代理共用的历史清理算法 |
 | `proxy.cjs` | HTTP/SSE 转发、历史清理、429 重试 |
 | `management.cjs` | 本机管理 API、规则与页面 |
+| `diagnostics.cjs` | 字段白名单日志、运行中轮转、脱敏诊断报告 |
 | `dashboard.html` | 不依赖前端构建的可视化页面 |
 | `guard.cjs` | 指纹检查、通过缓存、锁定和检测历史 |
 | `guard-evidence.cjs` | 逐样本与汇总评分、数字证据结构校验 |

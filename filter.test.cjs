@@ -291,7 +291,7 @@ test('HTTP filtering handles all compressed forms and preserves authorization, p
   const health = JSON.parse((await call(origin, ADMIN + '/health', {method: 'GET'})).body);
   assert.equal(health.stats.filteredRequests, 7);
   assert.equal(health.stats.removedReasoningItems, 7);
-  assert.equal(health.filterVersion, 31);
+  assert.equal(health.filterVersion, 32);
   assert.equal(health.stats.removedItemIds, 35);
   assert.equal(health.stats.upstreamHttpErrors, 5);
   assert.equal(health.stats.lastUpstreamStatus, 200);
@@ -817,7 +817,7 @@ test('provider switches per request; non-target, unknown and failover pass compr
   assert.equal(health.policy.mode, 'passthrough');
   assert.equal(health.policy.reason, 'auto-failover-or-unknown');
   assert.equal(health.stats.filteredRequests, 3);
-  assert.equal(health.filterVersion, 31);
+  assert.equal(health.filterVersion, 32);
 });
 test('explicit include preservation applies only to configured provider IDs', async t => {
   const {db, filename, select} = mockDatabase(t);
@@ -860,7 +860,7 @@ test('explicit include preservation applies only to configured provider IDs', as
   assert.equal((await call(origin, '/responses', {body: raw})).status, 200);
   assert.deepEqual(received.raw, raw);
   const health = JSON.parse((await call(origin, ADMIN + '/health', {method: 'GET'})).body);
-  assert.equal(health.filterVersion, 31);
+  assert.equal(health.filterVersion, 32);
   assert.equal(health.stats.filteredRequests, 2);
   assert.equal(health.stats.removedReasoningItems, 2);
   assert.equal(health.stats.removedItemIds, 10);

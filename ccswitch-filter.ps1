@@ -1,6 +1,6 @@
 ﻿[CmdletBinding()]
 param(
-    [ValidateSet('Start', 'Stop', 'Status', 'Run', 'Test')]
+    [ValidateSet('Start', 'Stop', 'Status', 'Diagnose', 'Run', 'Test')]
     [string]$Action = 'Status',
     [ValidateRange(1024, 65535)]
     [int]$Port = 18181,

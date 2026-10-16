@@ -2,9 +2,9 @@
 
 const http = require('node:http');
 const zlib = require('node:zlib');
-const {timingSafeEqual} = require('node:crypto');
+const {timingSafeEqual, randomUUID} = require('node:crypto');
 const {collectResponse} = require('./guard-transport.cjs');
-const FILTER_VERSION = 31;
+const FILTER_VERSION = 32;
 const SERVICE = 'ccswitch-codex-reasoning-filter-v1';
 const ADMIN = '/__codex_filter__';
 const LIMIT = 64 * 1024 * 1024;
@@ -78,7 +78,7 @@ function sendError(res, error) {
   res.end(JSON.stringify({error: {type: 'invalid_request_error', code: error.code || 'local_filter_error', message: error.message}}));
 }
 
-function makeProxy({getUpstream, token, dashboard, guard, requestScopedPolicy = false, onStop = () => {}, getState = () => ({}), log = () => {}, limit = LIMIT, getModelAliases = () => new Map(), getFilterPolicy = () => ({filter: false, reason: 'unidentified-provider'}),
+function makeProxy({getUpstream, token, dashboard, guard, requestScopedPolicy = false, onStop = () => {}, getState = () => ({}), getDiagnostics, log = () => {}, limit = LIMIT, getModelAliases = () => new Map(), getFilterPolicy = () => ({filter: false, reason: 'unidentified-provider'}),
   // Replay a concurrency-queue/rate-limit 429 instead of failing the turn. Safe only
   // for buffered POSTs: the upstream rejected the request before any model work ran.
   retry429 = null}) {
@@ -90,12 +90,17 @@ function makeProxy({getUpstream, token, dashboard, guard, requestScopedPolicy = 
     blockedRequests: 0, upstreamErrors: 0, upstreamHttpErrors: 0, lastFilteredAt: null, lastUpstreamStatus: null};
   let lastPolicy = {filter: false, mode: 'passthrough', reason: 'no-request-yet'};
   const server = http.createServer(async (req, res) => {
+    const requestId = randomUUID(), started = Date.now();
+    let tracked = false;
+    const requestLog = (event, data = {}) => log(event, {...data, requestId});
+    res.on('finish', () => { if (tracked) requestLog('request-finished', {status: res.statusCode, durationMs: Date.now() - started}); });
     let upstreamRequest;
     const guardController = new AbortController();
     guardController.signal.addEventListener('abort',() => upstreamRequest?.destroy(),{once:true});
     let unwatch, heartbeat;
     res.on('close', () => {
       clearInterval(heartbeat); unwatch?.();
+      if (tracked && !res.writableFinished) requestLog('request-disconnected', {durationMs: Date.now() - started});
       if (!res.writableFinished) { guardController.abort(); upstreamRequest?.destroy(); }
     });
     // SSE comments keep the local connection alive while withholding all model
@@ -120,7 +125,8 @@ function makeProxy({getUpstream, token, dashboard, guard, requestScopedPolicy = 
         throw new FilterError('invalid_target', 'Only origin-form HTTP requests are accepted.');
       }
       const route = decodeURIComponent(new URL(req.url, 'http://127.0.0.1').pathname);
-      const isDashboard = dashboard && (route === ADMIN + '/ui' || route === ADMIN + '/favicon.svg' || route.startsWith(ADMIN + '/api/'));
+      const assetName = ['workbench-theme.css','current-selection.js'].find(name => route === ADMIN + '/' + name);
+      const isDashboard = dashboard && (assetName || route === ADMIN + '/ui' || route === ADMIN + '/favicon.svg' || route.startsWith(ADMIN + '/api/'));
       if (isDashboard) {
         const origin = 'http://127.0.0.1:' + server.address().port;
         if (req.headers.host !== new URL(origin).host || (req.headers.origin && req.headers.origin !== origin)
@@ -130,6 +136,10 @@ function makeProxy({getUpstream, token, dashboard, guard, requestScopedPolicy = 
         res.setHeader('cache-control', 'no-store');
         res.setHeader('x-content-type-options', 'nosniff');
         res.setHeader('referrer-policy', 'no-referrer');
+        if (assetName && req.method === 'GET' && dashboard.asset) {
+          res.writeHead(200, {'content-type': assetName.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/javascript; charset=utf-8'});
+          res.end(dashboard.asset(assetName)); return;
+        }
         if (route === ADMIN + '/favicon.svg' && req.method === 'GET') {
           res.setHeader('content-security-policy', "default-src 'none'; style-src 'none'; sandbox");
           res.writeHead(200, {'content-type': 'image/svg+xml; charset=utf-8'});
@@ -137,7 +147,7 @@ function makeProxy({getUpstream, token, dashboard, guard, requestScopedPolicy = 
           return;
         }
         if (route === ADMIN + '/ui' && req.method === 'GET') {
-          res.setHeader('content-security-policy', "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'");
+          res.setHeader('content-security-policy', "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'");
           res.writeHead(200, {'content-type': 'text/html; charset=utf-8'});
           res.end(dashboard.html(token));
           return;
@@ -158,6 +168,12 @@ function makeProxy({getUpstream, token, dashboard, guard, requestScopedPolicy = 
           throw new FilterError('invalid_control_token', 'Invalid local control token.', 403);
         }
         if (isDashboard && route.startsWith(ADMIN + '/api/')) {
+          if (route === ADMIN + '/api/diagnostics' && req.method === 'GET') {
+            const diagnostics = getDiagnostics ? await getDiagnostics() : await require('./diagnostics.cjs').buildReport({service: {running: true, ...getState(), filterVersion: FILTER_VERSION}, management: dashboard});
+            res.writeHead(200, {'content-type': 'application/json; charset=utf-8'});
+            res.end(JSON.stringify({diagnostics}));
+            return;
+          }
           let payload = {};
           if (req.method !== 'GET') {
             const raw = await readBody(req, 65536);
@@ -176,6 +192,8 @@ function makeProxy({getUpstream, token, dashboard, guard, requestScopedPolicy = 
         res.end('{"stopping":true}');
         return;
       }
+      tracked = req.method === 'POST' && /\/responses(?:\/compact)?\/?$/.test(route);
+      if (tracked) requestLog('request-received');
       let body, policyInput;
       if (requestScopedPolicy && req.method === 'POST' && /\/responses(?:\/compact)?\/?$/.test(route)) {
         body = await readBody(req, limit);
@@ -191,6 +209,7 @@ function makeProxy({getUpstream, token, dashboard, guard, requestScopedPolicy = 
       catch { policy = {filter: false, reason: 'policy-unavailable'}; }
       const shouldFilter = policy?.filter === true;
       lastPolicy = publicPolicy(policy);
+      if (tracked) requestLog('request-policy', {filter: shouldFilter, reason: policy?.reason, provider: policy?.provider});
       if (shouldFilter && /\/responses\/compact\/?$/.test(route)) {
         throw new FilterError('encrypted_compaction_disabled',
           'Encrypted Responses compaction is disabled. Use a text summary and start a new session.', 409);
@@ -208,6 +227,7 @@ function makeProxy({getUpstream, token, dashboard, guard, requestScopedPolicy = 
         catch { policy = {filter: false, reason: 'policy-unavailable'}; }
         isResponses = policy?.filter === true || policy?.stripResponsesLiteHeader === true;
         lastPolicy = publicPolicy(policy);
+        if (tracked) requestLog('request-policy', {filter: policy?.filter === true, reason: policy?.reason, provider: policy?.provider});
         if (!isResponses) {
           body = original;
         } else {
@@ -215,7 +235,7 @@ function makeProxy({getUpstream, token, dashboard, guard, requestScopedPolicy = 
             delete headers[RESPONSES_LITE_HEADER];
             stats.strippedResponsesLiteHeaders++;
             stats.lastLiteHeaderStrippedAt = new Date().toISOString();
-            log('lite-header-stripped', {provider: policy.provider || 'unknown'});
+            requestLog('lite-header-stripped', {provider: policy.provider || 'unknown'});
           }
           // Header compatibility changes neither body fields nor encoding.
           if (policy.filter !== true) {
@@ -233,7 +253,7 @@ function makeProxy({getUpstream, token, dashboard, guard, requestScopedPolicy = 
             stats.removedItemIds += filtered.removedItemIds;
             stats.removedEncryptedContentItems += filtered.removedEncryptedContentItems;
             stats.lastFilteredAt = new Date().toISOString();
-            log('filtered', {removed: filtered.removed, removedItemIds: filtered.removedItemIds,
+            requestLog('filtered', {removed: filtered.removed, removedItemIds: filtered.removedItemIds,
               removedEncryptedContentItems: filtered.removedEncryptedContentItems,
               provider: policy.provider || 'unknown'});
             body = Buffer.from(JSON.stringify(filtered.body));
@@ -269,7 +289,7 @@ function makeProxy({getUpstream, token, dashboard, guard, requestScopedPolicy = 
           headers['content-length'] = String(body.length);
           stats.normalizedModelAliases++;
           stats.lastModelAliasNormalizedAt = new Date().toISOString();
-          log('model-alias-normalized', {from, to: target});
+          requestLog('model-alias-normalized', {from, to: target});
           isResponses = true;
         }
       }
@@ -330,21 +350,22 @@ function makeProxy({getUpstream, token, dashboard, guard, requestScopedPolicy = 
         catch (error) {
           if (res.destroyed) return;
           stats.upstreamErrors++;
-          log('upstream-error', {code: error.code || 'timeout'});
+          requestLog('upstream-error', {code: error.code || 'timeout'});
           requestError(new FilterError('ccswitch_unavailable', 'Cannot reach local gateway (CC Switch / Magpie). Start its local proxy, then retry.', 502));
           return;
         }
-        if (isResponses) {
+        if (tracked) requestLog('upstream-response', {status: upstreamResponse.statusCode});
+        if (isResponses || tracked) {
           stats.lastUpstreamStatus = upstreamResponse.statusCode;
           if (upstreamResponse.statusCode >= 400) {
             stats.upstreamHttpErrors++;
-            log('upstream-http-error', {status: upstreamResponse.statusCode});
+            requestLog('upstream-http-error', {status: upstreamResponse.statusCode});
           }
         }
         if (upstreamResponse.statusCode !== 429 || !canRetry429 || attempts >= retry429.maxAttempts) {
           if (upstreamResponse.statusCode === 429 && canRetry429 && attempts >= retry429.maxAttempts) {
             stats.retry429Exhausted++;
-            log('retry-429-exhausted', {attempts});
+            requestLog('retry-429-exhausted', {attempts});
           }
           if (res.destroyed) { upstreamResponse.destroy(); return; }
           if (guardContext && upstreamResponse.statusCode >= 300 && upstreamResponse.statusCode < 400) {
@@ -384,8 +405,13 @@ function makeProxy({getUpstream, token, dashboard, guard, requestScopedPolicy = 
           }
           res.writeHead(upstreamResponse.statusCode, cleanHeaders(upstreamResponse.headers));
           res.flushHeaders();
-          upstreamResponse.on('error', () => res.destroy());
-          upstreamResponse.on('aborted', () => res.destroy());
+          let streamErrorLogged = false;
+          const streamFailed = () => {
+            if (!streamErrorLogged && !res.destroyed && !guardController.signal.aborted) { streamErrorLogged = true; requestLog('upstream-stream-error'); }
+            res.destroy();
+          };
+          upstreamResponse.on('error', streamFailed);
+          upstreamResponse.on('aborted', streamFailed);
           upstreamResponse.pipe(res);
           return;
         }
@@ -394,7 +420,7 @@ function makeProxy({getUpstream, token, dashboard, guard, requestScopedPolicy = 
         const errorBody = await readBody(upstreamResponse, 64 * 1024).catch(() => Buffer.alloc(0));
         if (PERMANENT_429.test(errorBody.toString('utf8'))) {
           stats.retry429Permanent++;
-          log('retry-429-permanent', {attempts});
+          requestLog('retry-429-permanent', {attempts});
           if (res.destroyed) return;
           if (res.headersSent) { requestError(new FilterError('upstream_quota','上游额度不足，请检查供应商余额。',429)); return; }
           clearInterval(heartbeat);
@@ -408,7 +434,7 @@ function makeProxy({getUpstream, token, dashboard, guard, requestScopedPolicy = 
         const delayMs = Math.max(0, Math.min(hinted || backoff, retry429.maxDelayMs));
         if (Date.now() - retryStart + delayMs > retry429.budgetMs) {
           stats.retry429Exhausted++;
-          log('retry-429-exhausted', {attempts, budgetMs: retry429.budgetMs});
+          requestLog('retry-429-exhausted', {attempts, budgetMs: retry429.budgetMs});
           if (res.destroyed) return;
           if (res.headersSent) { requestError(new FilterError('upstream_rate_limit','上游限流重试耗尽，请稍后重试。',429)); return; }
           clearInterval(heartbeat);
@@ -418,13 +444,13 @@ function makeProxy({getUpstream, token, dashboard, guard, requestScopedPolicy = 
         }
         stats.retries429++;
         stats.lastRetry429At = new Date().toISOString();
-        log('retry-429', {attempt: attempts + 1, delayMs, elapsedMs: Date.now() - retryStart});
+        requestLog('retry-429', {attempt: attempts + 1, delayMs, elapsedMs: Date.now() - retryStart});
         await new Promise(resolve => setTimeout(resolve, delayMs));
         if (res.destroyed || req.aborted) return;
       }
     } catch (error) {
       stats.blockedRequests++;
-      log('blocked', {code: error.code || 'filter_error'});
+      if (tracked) requestLog('blocked', {code: error.code || 'filter_error'});
       requestError(error instanceof FilterError || error.code?.startsWith('guard_') ? error : new FilterError('local_filter_error', 'Local filter failed to handle request.', 500));
     }
   });
@@ -437,4 +463,4 @@ function makeProxy({getUpstream, token, dashboard, guard, requestScopedPolicy = 
   return server;
 }
 
-module.exports = {SERVICE, ADMIN, FilterError, filterResponsesRequest, localOrigin, makeProxy, decodeBody};
+module.exports = {SERVICE, ADMIN, FILTER_VERSION, FilterError, filterResponsesRequest, localOrigin, makeProxy, decodeBody};

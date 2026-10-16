@@ -31,7 +31,7 @@ for (const [name, info] of Object.entries(provenance.files)) {
   const staged = execFileSync('git', ['show', ':vendor/modeltrace/' + name], {cwd: root, windowsHide: true, maxBuffer: 16 * 1024 * 1024});
   if (createHash('sha256').update(staged).digest('hex') !== info.sha256) issues.push('vendor/modeltrace/' + name + ': staged bytes differ from provenance');
 }
-for (const required of ['magpie.cjs', 'magpie-plugin-store.cjs', 'magpie-plugin/package.json', 'magpie-plugin/history.middleware.js', 'magpie-plugin/history-filter.mjs', 'guard-evidence.cjs', 'guard-retry.cjs', 'guard.cjs', 'guard-transport.cjs', 'README.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'Start.bat', 'Stop.bat', 'Status.bat', 'start.ps1', 'assets/app.ico', 'assets/favicon.svg', 'docs/images/providers.png', 'docs/images/protection.png', 'docs/images/history.png']) {
+for (const required of ['diagnostics.cjs', 'Diagnose.bat', '.github/ISSUE_TEMPLATE/bug_report.yml', 'magpie.cjs', 'magpie-plugin-store.cjs', 'magpie-plugin/package.json', 'magpie-plugin/history.middleware.js', 'magpie-plugin/history-filter.mjs', 'guard-evidence.cjs', 'guard-retry.cjs', 'guard.cjs', 'guard-transport.cjs', 'README.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'Start.bat', 'Stop.bat', 'Status.bat', 'start.ps1', 'assets/app.ico', 'assets/favicon.svg', 'assets/workbench-theme.css', 'assets/current-selection.js', 'docs/images/providers.png', 'docs/images/protection.png', 'docs/images/history.png']) {
   if (!files.includes(required)) issues.push(required + ': required release file is not staged/tracked');
 }
 if (issues.length) { console.error(issues.join('\n')); process.exitCode = 1; }

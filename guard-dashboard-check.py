@@ -50,6 +50,10 @@ def route_request(route):
         ui_loads += 1
         route.fulfill(status=200, content_type="text/html; charset=utf-8", body=html.replace("__FILTER_TOKEN_JSON__", json.dumps(server_token)))
         return
+    if path in ("/workbench-theme.css", "/current-selection.js", "/favicon.svg"):
+        asset = root / "assets" / path[1:]
+        route.fulfill(status=200, content_type={".css": "text/css", ".js": "text/javascript", ".svg": "image/svg+xml"}[asset.suffix], body=asset.read_bytes())
+        return
     if not path.startswith("/api/"):
         route.fulfill(status=404, body="")
         return
@@ -99,7 +103,7 @@ with sync_playwright() as p:
     expect(page.locator("#viewProviders")).to_have_attribute("role", "tab")
     expect(page.locator("#providersView")).to_have_attribute("role", "tabpanel")
     expect(page.locator("#currentHistoryEnabled")).to_be_visible()
-    expect(page.locator("#guardEnabled")).to_be_visible()
+    expect(page.locator("#guardEnabled")).to_be_hidden()
     expect(page.locator("#currentHistoryEnabled")).to_have_attribute("aria-checked", "false")
     expect(page.locator("#guardEnabled")).to_have_attribute("aria-checked", "false")
     assert not any(call[0] != "GET" for call in calls), "Loading the UI must not enable settings or run probes"
@@ -109,6 +113,9 @@ with sync_playwright() as p:
     expect(page.locator("#viewProtection")).to_be_focused()
     expect(page.locator("#protectionView")).to_be_visible()
     page.keyboard.press("End")
+    expect(page.locator("#viewSettings")).to_be_focused()
+    expect(page.locator("#settingsView")).to_be_visible()
+    page.keyboard.press("ArrowLeft")
     expect(page.locator("#viewHistory")).to_be_focused()
     expect(page.locator("#historyView")).to_be_visible()
     page.keyboard.press("ArrowLeft")
@@ -125,8 +132,8 @@ with sync_playwright() as p:
     expect(page.locator("#guardHistoryCount")).to_have_text("共 0 条")
     expect(page.locator("#guardHistoryPrev")).to_be_disabled()
     expect(page.locator("#guardHistoryNext")).to_be_disabled()
-    expect(page.locator("#currentHistoryEnabled")).to_be_visible()
-    expect(page.locator("#guardEnabled")).to_be_visible()
+    expect(page.locator("#currentHistoryEnabled")).to_be_hidden()
+    expect(page.locator("#guardEnabled")).to_be_hidden()
     select_view(page, "protection")
     expect(page.locator("#guardPanel")).to_be_visible()
     expect(page.locator("#guardBadge")).to_have_text("未开启")
@@ -135,6 +142,7 @@ with sync_playwright() as p:
 
     expect(page.locator("#guardModelSource")).to_contain_text("配置文件的默认值")
     expect(page.locator("#guardManualModel")).to_have_value("gpt-6-astra")
+    expect(page.locator("#guardSelectionEditor")).to_have_js_property("open", True)
     page.locator("#guardManualModel").select_option("gpt-6-sol")
     expect(page.locator("#guardManualEffort")).to_have_value("default")
     page.locator("#guardManualEffort").select_option("xhigh")
@@ -150,14 +158,17 @@ with sync_playwright() as p:
     expect(page.locator("#guardManualEffort")).to_have_value("low")
     state["guard"]["current"]["routeRevision"] = "route-1"
     page.locator("#refresh").click()
-    expect(page.locator("#guardManualModel")).to_have_value("gpt-6-astra")
-    expect(page.locator("#guardManualEffort")).to_have_value("high")
+    expect(page.locator("#guardManualModel")).to_have_value("gpt-6-luna")
+    expect(page.locator("#guardManualEffort")).to_have_value("low")
     assert not any(call[1] == "/api/guard/check" for call in calls)
     state["guard"]["current"].update(model="gpt-6-astra", effort="high")
+    page.locator("#refresh").click()
 
     select_view(page, "providers")
     page.get_by_role("switch", name="演示供应商 模型保护", exact=True).click()
+    page.locator("#viewProtection").click()
     expect(page.locator("#guardEnabled")).to_have_attribute("aria-checked", "true")
+    page.locator("#viewProviders").click()
     assert state["guard"]["providers"]["gugu"] == {"enabled": True, "ttlSeconds": 600}
     assert not state["providers"][0]["rule"]["historyFilter"]
     page.get_by_role("button", name="已启用", exact=True).click()
@@ -166,6 +177,8 @@ with sync_playwright() as p:
     expect(page.locator("#providers tr")).to_have_count(1)
     page.get_by_role("button", name="全部", exact=True).click()
     select_view(page, "protection")
+    if not page.locator("#guardSelectionEditor").evaluate("e => e.open"):
+        page.locator("#guardAdjust").click()
     page.locator("#guardTtl").select_option("0")
     expect(page.locator("#guardCurrentDetail")).to_contain_text("每次请求前检测")
     assert state["guard"]["providers"]["gugu"]["ttlSeconds"] == 0
@@ -350,9 +363,11 @@ with sync_playwright() as p:
     expect(page.locator("#guardTest")).to_be_disabled()
     expect(page.get_by_role("switch", name="演示供应商 历史过滤", exact=True)).to_be_disabled()
     expect(page.locator("#providers tr").filter(has_text="演示供应商").get_by_role("button", name="配置", exact=True)).to_be_disabled()
+    select_view(page, "protection")
     page.locator("#guardEnabled").click()
     expect(page.locator("#guardEnabled")).to_have_attribute("aria-checked", "false")
     expect(page.locator("#guardEnabled")).to_be_disabled()
+    select_view(page, "providers")
     expect(page.get_by_role("switch", name="演示供应商 模型保护", exact=True)).to_be_disabled()
     expect(page.get_by_role("switch", name="其他供应商 模型保护", exact=True)).to_be_enabled()
     page.get_by_role("switch", name="其他供应商 模型保护", exact=True).click()
@@ -525,7 +540,7 @@ with sync_playwright() as p:
     page.locator("#guardHistoryLatest").click()
     page.evaluate("window.scrollTo(0, document.documentElement.scrollHeight)")
     nav_box = page.locator("#viewHistory").bounding_box()
-    assert nav_box and 0 <= nav_box["y"] < 100, "Mobile navigation is not sticky at the top"
+    assert nav_box and 0 <= nav_box["y"] < 180 and abs(page.locator(".side").bounding_box()["y"]) <= 1, "Mobile navigation is not sticky at the top"
     page.locator("#guardHistorySection").screenshot(path=str(root / ".runtime" / "guard-history-mobile.png"))
     del state["guard"]["history"]
     page.locator("#refresh").click()
@@ -573,6 +588,7 @@ with sync_playwright() as p:
     server_token = "restarted-service-3"
     before_loads = ui_loads
     before_puts = len([call for call in calls if call[0] == "PUT"])
+    select_view(page, "protection")
     page.locator("#guardEnabled").click()
     expect(page.locator("#reconnect")).to_be_visible()
     expect(page.locator("#guardEnabled")).to_be_disabled()
@@ -654,6 +670,7 @@ with tempfile.TemporaryDirectory(prefix="codex-guard-ui-backend-") as scratch:
             expect(page.locator("#guardHistory .guard-history-record")).to_have_count(1)
             expect(page.locator("#guardEnabled")).to_have_attribute("aria-checked", "false")
             expect(page.locator("#guardBadge")).to_have_text("未开启")
+            select_view(page, "protection")
             page.locator("#guardEnabled").click()
             expect(page.locator("#guardBadge")).to_have_text("等待重新检测")
             expect(page.locator("#guardVerdict")).to_have_text("通过 · 样本匹配")
@@ -680,6 +697,8 @@ with tempfile.TemporaryDirectory(prefix="codex-guard-ui-backend-") as scratch:
             page.locator("#guardTest").click()
             expect(page.locator("#guardVerdict")).to_have_text("通过 · 样本匹配", timeout=6000)
             expect(page.locator("#guardHistory .guard-history-record")).to_have_count(3)
+            if not page.locator("#guardSelectionEditor").evaluate("e => e.open"):
+                page.locator("#guardAdjust").click()
             page.locator("#guardTtl").select_option("0")
             expect(page.locator("#guardBadge")).to_have_text("等待重新检测")
             page.locator("#guardTest").click()
@@ -694,7 +713,7 @@ with tempfile.TemporaryDirectory(prefix="codex-guard-ui-backend-") as scratch:
             assert len(stored_history) == 4 and len({item["id"] for item in stored_history}) == 4
             assert len({item["key"] for item in stored_history}) == 1
             assert all(item["source"] == "manual" for item in stored_history)
-            # Quick history filtering works in every view and preserves the other
+            # Quick history filtering in the supplier view preserves the other
             # compatibility flags and unrelated providers in the real backend.
             rules_path = Path(scratch) / "provider-rules.json"
             select_view(page, "providers")
@@ -708,8 +727,10 @@ with tempfile.TemporaryDirectory(prefix="codex-guard-ui-backend-") as scratch:
             saved_rules = json.loads(rules_path.read_text(encoding="utf-8"))["providers"]
             guard_settings_before = json.loads((Path(scratch) / "model-guard.json").read_text(encoding="utf-8"))["providers"]
             select_view(page, "history")
+            expect(page.locator("#currentHistoryEnabled")).to_be_hidden()
+            expect(page.locator("#guardEnabled")).to_be_hidden()
+            select_view(page, "providers")
             expect(page.locator("#currentHistoryEnabled")).to_be_visible()
-            expect(page.locator("#guardEnabled")).to_be_visible()
             page.locator("#currentHistoryEnabled").click()
             expect(page.locator("#currentHistoryEnabled")).to_have_attribute("aria-checked", "true")
             expect(page.locator("#refresh")).to_be_enabled()

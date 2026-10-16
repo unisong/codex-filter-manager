@@ -41,6 +41,21 @@ with tempfile.TemporaryDirectory(prefix='codex-filter-ui-') as scratch:
             page.on('pageerror', lambda e: errors.append(str(e)))
             page.goto(url)
             expect(page.locator('#providers tr')).to_have_count(5)
+            page.locator('#viewSettings').click()
+            page.locator('#diagnose').click()
+            expect(page.locator('#diagnosticDialog')).to_be_visible()
+            expect(page.locator('#diagnosticChecks')).to_contain_text('管理服务可响应')
+            expect(page.locator('#diagnosticPreview')).not_to_contain_text('ui-test-only')
+            with page.expect_download() as downloaded:
+                page.locator('#exportDiagnostics').click()
+            report_path = Path(scratch) / 'downloaded-report.json'
+            downloaded.value.save_as(report_path)
+            diagnostic = json.loads(report_path.read_text(encoding='utf-8'))
+            assert diagnostic['schemaVersion'] == 1
+            assert '演示供应商' not in report_path.read_text(encoding='utf-8')
+            page.locator('#closeDiagnostics').click()
+            expect(page.locator('#diagnosticDialog')).to_be_hidden()
+            page.locator('#viewProviders').click()
             expect(page.locator('#providersView')).to_be_visible()
             expect(page.locator('#viewProtection')).to_be_hidden()
             expect(page.locator('#viewHistory')).to_be_hidden()
@@ -138,11 +153,18 @@ with tempfile.TemporaryDirectory(prefix='codex-filter-ui-') as scratch:
             page.keyboard.press('Escape')
             page.set_viewport_size({'width': 390, 'height': 844})
             assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth'), 'Mobile horizontal overflow'
+            page.locator('#viewSettings').click()
+            page.locator('#diagnose').click()
+            expect(page.locator('#diagnosticDialog')).to_be_visible()
+            expect(page.locator('#exportDiagnostics')).to_be_enabled()
+            assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth'), 'Diagnostic dialog overflows mobile viewport'
+            page.screenshot(path=str(output / 'diagnostics-mobile.png'), full_page=True)
+            page.locator('#closeDiagnostics').click()
             page.screenshot(path=str(output / 'dashboard-mobile.png'), full_page=True)
             assert not errors, errors
             browser.close()
         assert hashlib.sha256(db.read_bytes()).hexdigest() == before_hash, 'CC Switch DB changed'
-        print(json.dumps({'passed': True, 'checks': ['refresh-progress', 'refresh-joins-poll', 'refresh-no-duplicate-click', 'refresh-success', 'refresh-failure-recovery', 'quiet-auto-poll', 'toggle', 'search', 'configure', 'persist', 'disable', 'reset', 'alias-switch', 'tabs', 'mobile-layout', 'no-page-errors', 'CCS-database-unchanged']}, ensure_ascii=False))
+        print(json.dumps({'passed': True, 'checks': ['diagnostic-dialog', 'diagnostic-download-schema-and-privacy', 'diagnostic-mobile-layout', 'refresh-progress', 'refresh-joins-poll', 'refresh-no-duplicate-click', 'refresh-success', 'refresh-failure-recovery', 'quiet-auto-poll', 'toggle', 'search', 'configure', 'persist', 'disable', 'reset', 'alias-switch', 'tabs', 'mobile-layout', 'no-page-errors', 'CCS-database-unchanged']}, ensure_ascii=False))
     finally:
         proc.terminate()
         proc.wait(timeout=10)

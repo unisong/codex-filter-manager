@@ -48,7 +48,7 @@ with tempfile.TemporaryDirectory(prefix='magpie-ui-') as scratch:
             expect(page.locator('#legacyAliasesCard')).to_be_hidden()
             expect(page.locator('#current')).to_have_text('演示供应商')
             expect(page.locator('#current').locator('..').locator('.label')).to_contain_text('配置默认供应商')
-            expect(page.locator('#versionBadge')).to_have_text('v31')
+            expect(page.locator('#versionBadge')).to_have_text('v32')
             expect(page.locator('#currentHistoryEnabled')).to_have_attribute('aria-checked', 'false')
             page.locator('#currentHistoryEnabled').click()
             expect(page.locator('#currentHistoryEnabled')).to_have_attribute('aria-checked', 'true')
@@ -56,7 +56,8 @@ with tempfile.TemporaryDirectory(prefix='magpie-ui-') as scratch:
             assert list(rules['plugins'][0]['options']['providers']) == ['magpie:demo']
             assert 'fallback' in page.locator('#providers').inner_text()
             page.locator('#viewProtection').click()
-            expect(page.locator('#guardModel')).to_contain_text('demo/gpt-6-astra')
+            expect(page.locator('#guardModel')).to_contain_text('暂无实际请求或历史记录')
+            expect(page.locator('#guardSelectionEditor')).to_have_js_property('open', True)
             expect(page.locator('#guardManualModel')).to_have_value('gpt-6-astra')
             expect(page.locator('#guardTest')).to_be_enabled()
             expect(page.locator('#guardEnabled')).to_have_attribute('aria-checked', 'false')

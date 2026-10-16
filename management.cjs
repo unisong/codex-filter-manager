@@ -99,6 +99,7 @@ function createManagement({databasePath, runtime, guard, adapter, pluginStore, l
     policy,
     html: token => fs.readFileSync(path.join(__dirname, 'dashboard.html'), 'utf8').replace('__FILTER_TOKEN_JSON__', JSON.stringify(token)),
     icon: () => fs.readFileSync(path.join(__dirname, 'assets', 'favicon.svg')),
+    asset: name => ['workbench-theme.css','current-selection.js'].includes(name) ? fs.readFileSync(path.join(__dirname,'assets',name)) : null,
     state,
     handle(method, route, payload) {
       if (method === 'GET' && route === '/state') return state();

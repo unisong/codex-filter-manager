@@ -1,6 +1,6 @@
 ﻿[CmdletBinding()]
 param(
-    [ValidateSet('Start', 'Stop', 'Status')][string]$Action = 'Start',
+    [ValidateSet('Start', 'Stop', 'Status', 'Diagnose')][string]$Action = 'Start',
     [switch]$CheckOnly,
     [switch]$NoShortcut,
     [switch]$Console,
@@ -155,6 +155,15 @@ try {
     $nodePath = Get-FilterNode -NoDownload:($Action -ne 'Start')
     $operation = if ($Action -eq 'Start') { 'status' } else { $Action.ToLowerInvariant() }
     $service = Invoke-FilterCommand $nodePath $operation
+    if ($Action -eq 'Diagnose') {
+        $reportDirectory = Join-Path $runtimePath 'reports'
+        [IO.Directory]::CreateDirectory($reportDirectory) | Out-Null
+        $reportPath = Join-Path $reportDirectory ('diagnostics-' + [DateTime]::UtcNow.ToString('yyyyMMdd-HHmmss-fff') + '.json')
+        [IO.File]::WriteAllText($reportPath, ($service | ConvertTo-Json -Depth 20), (New-Object Text.UTF8Encoding($false)))
+        Write-Output ('Report: ' + $reportPath)
+        $service.checks | Format-Table -Property level,code,message -Wrap
+        return
+    }
     if ($Action -ne 'Start') { $service | ConvertTo-Json -Depth 10; return }
     $versionMatch = [regex]::Match([IO.File]::ReadAllText((Join-Path $PSScriptRoot 'proxy.cjs')), 'const FILTER_VERSION\s*=\s*(\d+)')
     if (-not $versionMatch.Success) { throw 'Cannot read the source version; please extract a complete release ZIP.' }

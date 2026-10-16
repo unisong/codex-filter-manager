@@ -12,6 +12,7 @@ const {ConfigRouter, discoverCcSwitch, readLegacyModelAliases} = require('./conf
 const {createManagement} = require('./management.cjs');
 const {createMagpieAdapter, discoverMagpie, detectBackend, defaultDirectory} = require('./magpie.cjs');
 const {createMagpiePluginStore} = require('./magpie-plugin-store.cjs');
+const {createDiagnostics, buildReport} = require('./diagnostics.cjs');
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 function jsonFile(filename) {
@@ -54,12 +55,12 @@ function ownsProcess(record) {
   if (Number.isFinite(startedAt) && Number.isFinite(info.createdAt) && Math.abs(info.createdAt - startedAt) > 60000) return false;
   return info.commandLine.includes(path.basename(__filename)) && /(^|\s)serve(\s|$)/.test(info.commandLine);
 }
-function request(origin, route, token, method = 'GET') {
+function request(origin, route, token, method = 'GET', maxBytes = 65536) {
   return new Promise((resolve, reject) => {
     const req = http.request(origin + route, {method, headers: token ? {'x-filter-token': token} : {}}, res => {
       let body = '';
       res.setEncoding('utf8');
-      res.on('data', chunk => { body += chunk; if (body.length > 65536) res.destroy(); });
+      res.on('data', chunk => { body += chunk; if (body.length > maxBytes) res.destroy(); });
       res.on('error', reject);
       res.on('end', () => {
         try {
@@ -95,7 +96,7 @@ function reachable(origin) {
 }
 function parseArgs(argv) {
   const command = (argv.shift() || 'help').toLowerCase();
-  if (!['help', 'start', 'serve', 'stop', 'status'].includes(command)) throw new Error('Use start, stop, status or serve.');
+  if (!['help', 'start', 'serve', 'stop', 'status', 'diagnose'].includes(command)) throw new Error('Use start, stop, status, diagnose or serve.');
   const values = {};
   const names = new Set(['port', 'upstream', 'config', 'runtime', 'cc-db', 'backend', 'magpie-dir']);
   while (argv.length) {
@@ -134,10 +135,15 @@ function removeOwnState(filename, instance) {
 async function serve(options) {
   const locations = files(options);
   fs.mkdirSync(options.runtime, {recursive: true});
+  const diagnostics = createDiagnostics({runtime: options.runtime});
+  const log = diagnostics.record;
+  log('starting');
   const backend = detectBackend(options);
   options = {...options, resolvedBackend: backend};
   const discover = () => backend === 'magpie' ? discoverMagpie(options.magpieDirectory) : discoverCcSwitch(options.databasePath);
-  let upstream = options.upstream || discover();
+  let upstream;
+  try { upstream = options.upstream || discover(); }
+  catch (error) { log('startup-error', {code: error.code}); throw error; }
   if (new URL(upstream).port === String(options.port)) throw new Error('Filter port must differ from local gateway port.');
   const instance = randomBytes(12).toString('hex');
   const record = {service: SERVICE, pid: process.pid, instance, token: randomBytes(32).toString('hex'),
@@ -150,7 +156,6 @@ async function serve(options) {
   // Exclusive creation serializes simultaneous starts; don't overwrite another instance.
   fs.writeFileSync(locations.state, JSON.stringify(record, null, 2), {flag: 'wx', mode: 0o600});
   let router, server, timer, stopping = false, lastError = null;
-  const log = (event, data = {}) => console.log(JSON.stringify({time: new Date().toISOString(), event, ...data}));
   const cleanup = () => removeOwnState(locations.state, instance);
   const shutdown = () => {
     if (stopping) return;
@@ -183,6 +188,9 @@ async function serve(options) {
       retry429: {maxAttempts: 30, baseDelayMs: 1500, maxDelayMs: 15000, budgetMs: 270000},
       getFilterPolicy: management.policy,
       requestScopedPolicy: !!adapter, getModelAliases: aliases,
+      getDiagnostics: async () => buildReport({service: {running: true, backend, state: router.state,
+        filterVersion: require('./proxy.cjs').FILTER_VERSION}, management, recorder: diagnostics,
+        gatewayReachable: await reachable(upstream)}),
       getState: () => ({instance, backend, state: stopping ? 'stopping' : router.state, upstream,
         currentPolicy: management.policy(),
         legacyModelAliasCount: aliases().size,
@@ -202,7 +210,7 @@ async function serve(options) {
         lastError = null;
       } catch (error) {
         const message = error.message;
-        if (lastError !== message) log('config-error', {message});
+        if (lastError !== message) log('config-error', {message, code: error.code});
         lastError = message;
         router.changeState('config-error');
       }
@@ -211,10 +219,11 @@ async function serve(options) {
     timer = setInterval(tick, 1000);
     for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => {
       try { shutdown(); }
-      catch (error) { log('restore-failed', {message: error.message}); }
+      catch (error) { log('restore-failed', {message: error.message, code: error.code}); }
     });
     log('listening', {filterOrigin: options.filterOrigin, upstream, state: router.state});
   } catch (error) {
+    log('startup-error', {code: error.code});
     clearInterval(timer);
     if (server?.listening) server.close();
     cleanup();
@@ -232,6 +241,26 @@ async function status(options) {
   }
   const state = !record ? 'stopped' : ownsProcess(record) ? 'unresponsive' : 'stale-state';
   return {service: SERVICE, running: false, state, recoveryBackup: fs.existsSync(files(options).backup)};
+}
+async function diagnose(options) {
+  let record, running;
+  try { record = jsonFile(files(options).state); running = await health(record); } catch {}
+  if (running?.filterVersion >= 32) {
+    try { return (await request(record.filterOrigin, ADMIN + '/api/diagnostics', record.token, 'GET', 256 * 1024)).diagnostics; } catch {}
+  }
+  let backend = running?.backend || options.backend, upstream = running?.upstream || options.upstream;
+  let management;
+  try {
+    backend = detectBackend(options);
+    upstream ||= backend === 'magpie' ? discoverMagpie(options.magpieDirectory) : discoverCcSwitch(options.databasePath);
+    const adapter = backend === 'magpie' ? createMagpieAdapter({directory: options.magpieDirectory, configPath: options.configPath, getUpstream: () => upstream}) : null;
+    management = createManagement({runtime: options.runtime, databasePath: options.databasePath || path.join(os.homedir(), '.cc-switch', 'cc-switch.db'), adapter,
+      pluginStore: adapter ? createMagpiePluginStore({directory: options.magpieDirectory}) : null});
+  } catch {}
+  const report = await buildReport({service: {...running, running: !!running, backend, state: running?.state || 'stopped'},
+    management, recorder: createDiagnostics({runtime: options.runtime}), requestObservationAvailable: false,
+    gatewayReachable: await require('./diagnostics.cjs').reachable(upstream)});
+  return report;
 }
 async function start(options) {
   const locations = files(options);
@@ -306,9 +335,13 @@ async function main() {
   if (Number(process.versions.node.split('.')[0]) < 24) throw new Error('Node.js 24 or later is required (built-in SQLite and zstd).');
   const options = parseArgs(process.argv.slice(2));
   if (options.command === 'help') {
-    console.log('node filter.cjs start|stop|status|serve [--port 18181] [--backend auto|ccswitch|magpie] [--magpie-dir PATH] [--upstream http://127.0.0.1:3425] [--config PATH] [--runtime PATH] [--cc-db PATH]');
+    console.log('node filter.cjs start|stop|status|diagnose|serve [--port 18181] [--backend auto|ccswitch|magpie] [--magpie-dir PATH] [--upstream http://127.0.0.1:3425] [--config PATH] [--runtime PATH] [--cc-db PATH]');
   } else if (options.command === 'serve') await serve(options);
-  else console.log(JSON.stringify(await ({start, stop, status}[options.command])(options), null, 2));
+  else {
+    const json = JSON.stringify(await ({start, stop, status, diagnose}[options.command])(options), null, 2);
+    // Windows PowerShell 5.1 may decode child stdout using a legacy code page.
+    console.log(options.command === 'diagnose' ? json.replace(/[\u007f-\uffff]/g, c => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0')) : json);
+  }
 }
 if (require.main === module) main().catch(error => { console.error('Filter: ' + error.message); process.exitCode = 1; });
-module.exports = {parseArgs, start, stop, status, serve, request, ownsProcess};
+module.exports = {parseArgs, start, stop, status, diagnose, serve, request, ownsProcess};

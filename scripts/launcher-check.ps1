@@ -4,7 +4,7 @@ $ErrorActionPreference = 'Stop'
 $repository = Split-Path $PSScriptRoot -Parent
 $scratch = Join-Path ([IO.Path]::GetTempPath()) ('codex-filter-launcher-' + [Guid]::NewGuid().ToString('N') + ' 中文 空格')
 New-Item -ItemType Directory -Path $scratch | Out-Null
-foreach ($name in @('start.ps1', 'open-dashboard.ps1', 'open-dashboard.vbs', 'ccswitch-filter.ps1', 'filter.cjs', 'proxy.cjs', 'config.cjs', 'magpie.cjs', 'management.cjs', 'guard-service.cjs', 'guard.cjs', 'guard-transport.cjs', 'guard-evidence.cjs', 'guard-retry.cjs', 'dashboard.html')) {
+foreach ($name in @('start.ps1', 'open-dashboard.ps1', 'open-dashboard.vbs', 'ccswitch-filter.ps1', 'filter.cjs', 'proxy.cjs', 'config.cjs', 'magpie.cjs', 'management.cjs', 'guard-service.cjs', 'guard.cjs', 'guard-transport.cjs', 'guard-evidence.cjs', 'guard-retry.cjs', 'dashboard.html', 'diagnostics.cjs', 'package.json')) {
     Copy-Item -LiteralPath (Join-Path $repository $name) -Destination (Join-Path $scratch $name)
 }
 Copy-Item -LiteralPath (Join-Path $repository 'vendor') -Destination (Join-Path $scratch 'vendor') -Recurse
@@ -138,6 +138,13 @@ try {
     $status = Invoke-LauncherFixture 'Status' | ConvertFrom-Json
     if (-not $status.running -or $status.state -ne 'filtering') { throw 'Status did not report active isolated service.' }
     $checks.Add('Status returns live health')
+    Invoke-LauncherFixture 'Diagnose' | Out-Null
+    $reports = @(Get-ChildItem -LiteralPath (Join-Path $fixtureRuntime 'reports') -Filter '*.json')
+    if ($reports.Count -ne 1) { throw 'Diagnostic launcher did not create one report.' }
+    $diagnostic = [IO.File]::ReadAllText($reports[0].FullName) | ConvertFrom-Json
+    if (-not $diagnostic.service.running -or $diagnostic.schemaVersion -ne 1) { throw 'Diagnostic launcher report is invalid.' }
+    if (($diagnostic.checks | Where-Object { $_.code -eq 'service-ready' }).message -notmatch '\u7ba1\u7406\u670d\u52a1') { throw 'Diagnostic report text was corrupted by a legacy output encoding.' }
+    $checks.Add('Diagnose exports a metadata-only report without changing routing')
     $firstPid = (Get-Content -LiteralPath (Join-Path $fixtureRuntime 'service.json') -Raw | ConvertFrom-Json).pid
     Invoke-LauncherFixture | Out-Null
     $secondPid = (Get-Content -LiteralPath (Join-Path $fixtureRuntime 'service.json') -Raw | ConvertFrom-Json).pid
