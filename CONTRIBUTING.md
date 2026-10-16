@@ -6,7 +6,7 @@
 
 开发需要 Node.js 24+，核心运行时没有第三方 npm 依赖。Windows 启动器面向 Windows 10 / 11 的 x64 / ARM64，PowerShell 脚本应兼容系统自带的 Windows PowerShell 5.1。
 
-默认启动会接管当前用户的 Codex 配置。开发与验证应使用独立临时目录、模拟 CC Switch 数据库和配置文件；不要让测试操作正式会话、数据库、供应商余额或真实项目。
+CC Switch 模式启动会接管当前用户的 Codex 配置；Magpie 模式安装本地中间件并保持 Codex 配置只读。开发与验证应使用独立临时目录、模拟 CC Switch 数据库和 Magpie 配置文件；不要让测试操作正式会话、数据库、供应商余额或真实项目。
 
 ## 目录与职责
 
@@ -14,6 +14,9 @@
 | --- | --- |
 | `filter.cjs` | 后台生命周期、启动/停止、配置接入 |
 | `config.cjs` | CC Switch 发现、只读策略、精确地址恢复 |
+| `magpie.cjs` | Magpie 只读供应商发现、请求路由与隔离规则 |
+| `magpie-plugin-store.cjs` | 维护 Magpie 中本工具的插件条目与管理页规则 |
+| `magpie-plugin/` | 原生请求钩子及与独立代理共用的历史清理算法 |
 | `proxy.cjs` | HTTP/SSE 转发、历史清理、429 重试 |
 | `management.cjs` | 本机管理 API、规则与页面 |
 | `dashboard.html` | 不依赖前端构建的可视化页面 |
@@ -45,6 +48,7 @@ node --test *.test.cjs
 python -m pip install playwright
 python .\dashboard-check.py
 python .\guard-dashboard-check.py
+python .\magpie-dashboard-check.py
 ```
 
 这些脚本使用模拟供应商数据，不应连接正式页面或读取真实凭据。`live-check.cjs` 与 `live-guard-check.cjs` 属于**明确手动执行的真实供应商检查**，可能调用模型并计费，不应放入 CI 或默认测试链。

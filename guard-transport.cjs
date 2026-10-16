@@ -163,7 +163,7 @@ function readErrorBody(response, signal) {
   });
 }
 
-async function collectResponse(response, {expectedModel, signal, maxBytes = 16 * 1024 * 1024,
+async function collectResponse(response, {expectedModel, expectedProvider, signal, maxBytes = 16 * 1024 * 1024,
   onMismatch, onProgress = () => {}, budget = {bytes: 0, limit: 64 * 1024 * 1024}}) {
   const chunks = [];
   let bytes = 0, complete = false, completedResponse, delta = '', lastModel;
@@ -197,6 +197,10 @@ async function collectResponse(response, {expectedModel, signal, maxBytes = 16 *
   }
   const parser = isSse ? createEventParser(inspect) : null;
   try {
+    if (expectedProvider && (response.headers['x-magpie-provider'] !== expectedProvider
+        || response.headers['x-magpie-model'] !== expectedProvider + '/' + expectedModel)) {
+      throw guardFailure('Magpie 未确认预期供应商与模型路由，响应已拦截；请检查故障转移、路由插件或 Magpie 版本。');
+    }
     if (signal?.aborted) throw guardFailure('请求已取消。');
     for await (const chunk of stream) {
       onProgress();
@@ -238,7 +242,7 @@ async function probe({context, signal, prompt, timeoutMs = PROBE_TIMEOUT_MS}) {
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > PROBE_TIMEOUT_MS) throw guardFailure('检测等待时限无效。');
   const target = new URL(context.transport.upstream);
   if (target.protocol !== 'http:' || !['127.0.0.1', 'localhost', '[::1]'].includes(target.hostname)) {
-    throw guardFailure('检测仅允许经现有本地 CC Switch 转发。');
+    throw guardFailure('检测仅允许经现有本地网关转发。');
   }
   const original = context.transport.headers;
   const headers = {'content-type': 'application/json', accept: 'text/event-stream', 'accept-encoding': 'identity'};
@@ -246,7 +250,7 @@ async function probe({context, signal, prompt, timeoutMs = PROBE_TIMEOUT_MS}) {
     if (original[key]) headers[key] = original[key];
   }
   headers['session_id'] = randomUUID();
-  const payload = {model: context.model, store: false, stream: true,
+  const payload = {model: context.requestModel || context.model, store: false, stream: true,
     instructions: '请完成用户要求的整数选择任务，直接输出数字，不要调用工具或编写代码。',
     input: [{role: 'user', content: [{type: 'input_text', text: prompt}]}],
     include: ['reasoning.encrypted_content']};
@@ -277,7 +281,7 @@ async function probe({context, signal, prompt, timeoutMs = PROBE_TIMEOUT_MS}) {
       if (signal?.aborted) throw guardFailure('检测已取消。');
       throw upstreamFailure(response.statusCode, errorBody, response.headers['retry-after']);
     }
-    return await collectResponse(response, {expectedModel: context.model, signal, maxBytes: 2 * 1024 * 1024});
+    return await collectResponse(response, {expectedModel: context.model, expectedProvider: context.gatewayProvider, signal, maxBytes: 2 * 1024 * 1024});
   } catch (error) {
     // Destroying the request can make IncomingMessage emit ECONNRESET instead
     // of the original timeout. Keep the actual local cause for the dashboard.

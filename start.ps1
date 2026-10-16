@@ -8,7 +8,9 @@ param(
     [string]$Config,
     [string]$Runtime,
     [string]$CcDb,
-    [string]$Upstream
+    [string]$Upstream,
+    [ValidateSet('auto', 'ccswitch', 'magpie')][string]$Backend = 'auto',
+    [string]$MagpieDir
 )
 $ErrorActionPreference = 'Stop'
 
@@ -118,6 +120,8 @@ function Invoke-FilterCommand {
     if ($Runtime) { $filterArguments += @('--runtime', $Runtime) }
     if ($CcDb) { $filterArguments += @('--cc-db', $CcDb) }
     if ($Upstream) { $filterArguments += @('--upstream', $Upstream) }
+    $filterArguments += @('--backend', $Backend)
+    if ($MagpieDir) { $filterArguments += @('--magpie-dir', $MagpieDir) }
     $result = & $Node @filterArguments
     if ($LASTEXITCODE -ne 0) { throw ('Filter ' + $Operation + ' failed. See the message above and .runtime/filter.log. If the requested port is occupied, stop the other service first.') }
     return ($result -join "`n") | ConvertFrom-Json
@@ -149,7 +153,8 @@ try {
     try { $ownsMutex = $mutex.WaitOne(240000) } catch [Threading.AbandonedMutexException] { $ownsMutex = $true }
     if (-not $ownsMutex) { throw 'Another launch is still running. Wait for it to finish and retry.' }
     $nodePath = Get-FilterNode -NoDownload:($Action -ne 'Start')
-    $service = Invoke-FilterCommand $nodePath $Action.ToLowerInvariant()
+    $operation = if ($Action -eq 'Start') { 'status' } else { $Action.ToLowerInvariant() }
+    $service = Invoke-FilterCommand $nodePath $operation
     if ($Action -ne 'Start') { $service | ConvertTo-Json -Depth 10; return }
     $versionMatch = [regex]::Match([IO.File]::ReadAllText((Join-Path $PSScriptRoot 'proxy.cjs')), 'const FILTER_VERSION\s*=\s*(\d+)')
     if (-not $versionMatch.Success) { throw 'Cannot read the source version; please extract a complete release ZIP.' }
@@ -158,8 +163,10 @@ try {
         if ($service.filterVersion -gt $sourceVersion) { throw 'A newer service is running. Open the newer installation, or stop it before downgrading.' }
         if (-not (Test-FilterProcessInThisFolder $runtimePath)) { throw 'An older service belongs to another or unverifiable installation. Stop it from that installation before starting this one.' }
         Invoke-FilterCommand $nodePath 'stop' | Out-Null
-        $service = Invoke-FilterCommand $nodePath 'start'
     }
+    # Validate routing options after safely stopping an older owned service;
+    # old versions cannot advertise the newly added backend options.
+    $service = Invoke-FilterCommand $nodePath 'start'
     if (-not $service.running -or $service.filterVersion -ne $sourceVersion) { throw 'The service is not ready. Check .runtime/filter.log.' }
     if (-not $NoShortcut -and -not $CheckOnly) {
         try { New-FilterDesktopShortcut } catch { Write-Warning ('Service is running, but the desktop shortcut could not be created: ' + $_.Exception.Message) }

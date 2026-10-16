@@ -4,10 +4,12 @@ $ErrorActionPreference = 'Stop'
 $repository = Split-Path $PSScriptRoot -Parent
 $scratch = Join-Path ([IO.Path]::GetTempPath()) ('codex-filter-launcher-' + [Guid]::NewGuid().ToString('N') + ' 中文 空格')
 New-Item -ItemType Directory -Path $scratch | Out-Null
-foreach ($name in @('start.ps1', 'open-dashboard.ps1', 'open-dashboard.vbs', 'ccswitch-filter.ps1', 'filter.cjs', 'proxy.cjs', 'config.cjs', 'management.cjs', 'guard-service.cjs', 'guard.cjs', 'guard-transport.cjs', 'guard-evidence.cjs', 'guard-retry.cjs', 'dashboard.html')) {
+foreach ($name in @('start.ps1', 'open-dashboard.ps1', 'open-dashboard.vbs', 'ccswitch-filter.ps1', 'filter.cjs', 'proxy.cjs', 'config.cjs', 'magpie.cjs', 'management.cjs', 'guard-service.cjs', 'guard.cjs', 'guard-transport.cjs', 'guard-evidence.cjs', 'guard-retry.cjs', 'dashboard.html')) {
     Copy-Item -LiteralPath (Join-Path $repository $name) -Destination (Join-Path $scratch $name)
 }
 Copy-Item -LiteralPath (Join-Path $repository 'vendor') -Destination (Join-Path $scratch 'vendor') -Recurse
+Copy-Item -LiteralPath (Join-Path $repository 'magpie-plugin') -Destination (Join-Path $scratch 'magpie-plugin') -Recurse
+Copy-Item -LiteralPath (Join-Path $repository 'magpie-plugin-store.cjs') -Destination (Join-Path $scratch 'magpie-plugin-store.cjs')
 if (Test-Path -LiteralPath (Join-Path $repository 'assets')) { Copy-Item -LiteralPath (Join-Path $repository 'assets') -Destination (Join-Path $scratch 'assets') -Recurse }
 $powershell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
 $originalLocation = Get-Location

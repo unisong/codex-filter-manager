@@ -300,12 +300,12 @@ tbody tr.selected {background: var(--accent-soft)}
 </head>
 <body>
 <div class="shell">
- <aside class="side"><div class="brand"><span class="brandmark"><img src="/__codex_filter__/favicon.svg" alt=""></span>Codex 过滤</div><div class="side-label">本地管理面板</div><div class="side-note"><strong>由你掌控每个供应商</strong>历史过滤与模型保护<br>可分别开启或关闭。<br><br>切换实际供应商，请在<br>CC Switch 中操作。</div></aside>
+ <aside class="side"><div class="brand"><span class="brandmark"><img src="/__codex_filter__/favicon.svg" alt=""></span>Codex 过滤</div><div class="side-label">本地管理面板</div><div class="side-note"><strong>由你掌控每个供应商</strong>历史过滤与模型保护<br>可分别开启或关闭。<br><br>切换实际供应商，请在<br><span class="backend-name">CC Switch</span> 中操作。</div></aside>
  <main class="main">
   <header class="top"><div><div class="eyebrow">LOCAL CONTROL <span class="version-badge" id="versionBadge">版本加载中</span></div><h1>过滤与模型检测</h1><p class="subtitle">管理历史兼容规则，在模型响应进入项目之前检查异常。</p></div><div class="top-actions"><div class="source-links"><a class="github-link" href="https://github.com/unisong/codex-filter-manager" target="_blank" rel="noopener noreferrer" aria-label="在 GitHub 查看本项目"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .5a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2.2c-3.3.7-4-1.4-4-1.4-.5-1.4-1.3-1.8-1.3-1.8-1.1-.8.1-.8.1-.8 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-6a4.7 4.7 0 0 1 1.3-3.2c-.1-.3-.6-1.6.1-3.3 0 0 1-.3 3.3 1.2a11.4 11.4 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.7 1.7.2 3 .1 3.3a4.7 4.7 0 0 1 1.3 3.2c0 4.7-2.8 5.7-5.5 6 .4.4.8 1.1.8 2.2v3.4c0 .3.2.7.8.6A12 12 0 0 0 12 .5Z"/></svg>本项目</a><a class="github-link" href="https://github.com/xqy2006/ModelTrace" target="_blank" rel="noopener noreferrer" aria-label="在 GitHub 查看检测算法来源 ModelTrace"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .5a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2.2c-3.3.7-4-1.4-4-1.4-.5-1.4-1.3-1.8-1.3-1.8-1.1-.8.1-.8.1-.8 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-6a4.7 4.7 0 0 1 1.3-3.2c-.1-.3-.6-1.6.1-3.3 0 0 1-.3 3.3 1.2a11.4 11.4 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.7 1.7.2 3 .1 3.3a4.7 4.7 0 0 1 1.3 3.2c0 4.7-2.8 5.7-5.5 6 .4.4.8 1.1.8 2.2v3.4c0 .3.2.7.8.6A12 12 0 0 0 12 .5Z"/></svg>ModelTrace</a></div><button class="button theme-toggle" id="themeToggle" type="button" aria-label="切换为深色" title="切换为深色" aria-pressed="false"><svg class="theme-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.9 13.2A9 9 0 0 1 10.8 3.1a9 9 0 1 0 10.1 10.1Z"/></svg><svg class="theme-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button><button class="button refresh-button" id="refresh" type="button" aria-busy="false"><svg class="refresh-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M6.1 7a7 7 0 0 1 11.6-1.2L20 9M4 15l2.3 3.2A7 7 0 0 0 17.9 17"/></svg><span class="refresh-label">刷新列表</span></button></div></header>
   <div class="banner" id="error" role="alert" hidden></div><button class="button" id="reconnect" style="margin-top:10px" hidden>重新连接管理页</button><div class="banner" id="warning" hidden></div>
   <section class="metrics" aria-label="服务概览">
-   <div class="metric current"><div class="label"><span class="dot" id="dot"></span>当前供应商</div><strong class="number provider" id="current">正在连接…</strong><small id="currentMode">读取 CC Switch 配置</small><div class="current-switches"><div class="current-switch"><label for="currentHistoryEnabled">历史过滤</label><button class="switch" id="currentHistoryEnabled" type="button" role="switch" aria-label="当前供应商历史过滤" aria-checked="false" disabled></button></div><div class="current-switch" id="currentGuardControl"><label for="guardEnabled">模型保护</label><button class="switch" id="guardEnabled" type="button" role="switch" aria-label="降智检测与切断保护" aria-checked="false" disabled></button></div></div></div>
+   <div class="metric current"><div class="label"><span class="dot" id="dot"></span>当前供应商</div><strong class="number provider" id="current">正在连接…</strong><small id="currentMode">读取网关配置</small><div class="current-switches"><div class="current-switch"><label for="currentHistoryEnabled">历史过滤</label><button class="switch" id="currentHistoryEnabled" type="button" role="switch" aria-label="当前供应商历史过滤" aria-checked="false" disabled></button></div><div class="current-switch" id="currentGuardControl"><label for="guardEnabled">模型保护</label><button class="switch" id="guardEnabled" type="button" role="switch" aria-label="降智检测与切断保护" aria-checked="false" disabled></button></div></div></div>
    <div class="metric"><div class="label">已启用历史过滤</div><strong class="number" id="enabled">—</strong><small id="total">供应商</small></div>
    <div class="metric"><div class="label">已处理历史请求</div><strong class="number" id="filtered">—</strong><small>本次服务启动以来</small></div>
    <div class="metric"><div class="label">已移除旧密文块</div><strong class="number" id="encrypted">—</strong><small>保留可读对话与工具结果</small></div>
@@ -324,9 +324,9 @@ tbody tr.selected {background: var(--accent-soft)}
     <div class="guard-options"><label for="guardManualModel">手动检测模型 <select id="guardManualModel" disabled></select></label><label for="guardManualEffort">推理强度 <select id="guardManualEffort" disabled></select></label><button class="button small" id="guardUseConfig" type="button" disabled>采用配置模型</button><button class="button small" id="guardUseRecent" type="button" disabled>采用最近请求</button></div>
     <p class="guard-config-note" id="guardSelectionNote" style="margin-top:8px"></p>
     <div class="guard-actions"><button class="button primary" id="guardTest" disabled>立即检测所选模型</button><button class="button" id="guardReset" disabled hidden>清除锁定，等待重新检测</button><span class="guard-detail" id="guardActionNote">检测使用独立请求，不把题目或结果写入项目对话。</span></div>
-    <p class="guard-detail" style="margin-top:14px">采用 ModelTrace 网页同版题目，逐个采集 3 个独立样本，汇总出现强差异时增加至 6 个；临时网络故障整次最多额外重试 3 次，按上游计费。每次尝试最多 180 秒，整次最多 10 分钟。保护开启时，项目响应完整校验后才会显示。</p>
+    <p class="guard-detail" id="guardSamplingDetail" style="margin-top:14px">采用 ModelTrace 网页同版题目，逐个采集 3 个独立样本，汇总出现强差异时增加至 6 个；临时网络故障整次最多额外重试 3 次，按上游计费。每次尝试最多 180 秒，整次最多 10 分钟。保护开启时，项目响应完整校验后才会显示。</p>
     <p class="guard-detail" style="margin-top:8px">“不通过”表示未获放行资格；保护开启时会拦截，关闭时只展示结果。样本无效、指纹差异和持久锁定分别说明原因，均不等于推理能力评分。独立样本匹配只描述本次探针，不能保证实际会话使用同一后端。可展开数字证据，用同一组样本复核。</p>
-    <details class="guard-method"><summary>检测方式与边界</summary><p id="guardMethodDetail">采用 ModelTrace 行为指纹和返回模型一致性检查。指纹匹配分不是可信概率，也不能证明推理质量或代码正确性。暂未收录的模型会显示“不支持”，开启保护后会拒绝放行。</p><p>算法与参考库来自 <a href="https://github.com/xqy2006/ModelTrace" target="_blank" rel="noopener noreferrer">ModelTrace（MIT）</a>，在本机评分。检测请求发给你在 CC Switch 选择的供应商，不使用 ModelTrace 的远程检测接口。另曾评估 <a href="https://github.com/chen-006/meow-llm-detector" target="_blank" rel="noopener noreferrer">meow-llm-detector</a>，未集成其代码或数据。</p><p>通过要求请求模型汇总排名第一且匹配分至少 0.5，无单样本强差异或完全重复样本。强差异要求其他模型分至少 0.8、请求模型分至多 0.15、差至少 0.65；汇总强差异经第二轮指向同一候选才持久锁定。样本冲突显示“疑似不一致”，不会判为匹配。以上为本工具的放行规则，ModelTrace 网页主要展示候选排名。</p><p>疑似模型不一致经复核后，会持久锁定该供应商与模型，并丢弃受影响的项目响应。网络或检测错误记为“未能验证”，不会被标为已确认降智。清除锁定后仍需重新检测通过。</p><p>通过结果的有效期内，上游变化可能漏检；独立检测通过也不能证明每一次项目请求使用相同模型，无法保证零污染。需要更频繁检查时可选“每次请求”。</p></details>
+    <details class="guard-method"><summary>检测方式与边界</summary><p id="guardMethodDetail">采用 ModelTrace 行为指纹和返回模型一致性检查。指纹匹配分不是可信概率，也不能证明推理质量或代码正确性。暂未收录的模型会显示“不支持”，开启保护后会拒绝放行。</p><p>算法与参考库来自 <a href="https://github.com/xqy2006/ModelTrace" target="_blank" rel="noopener noreferrer">ModelTrace（MIT）</a>，在本机评分。检测请求经本地网关发给所选供应商，不使用 ModelTrace 的远程检测接口。另曾评估 <a href="https://github.com/chen-006/meow-llm-detector" target="_blank" rel="noopener noreferrer">meow-llm-detector</a>，未集成其代码或数据。</p><p>通过要求请求模型汇总排名第一且匹配分至少 0.5，无单样本强差异或完全重复样本。强差异要求其他模型分至少 0.8、请求模型分至多 0.15、差至少 0.65；汇总强差异经第二轮指向同一候选才持久锁定。样本冲突显示“疑似不一致”，不会判为匹配。以上为本工具的放行规则，ModelTrace 网页主要展示候选排名。</p><p>疑似模型不一致经复核后，会持久锁定该供应商与模型，并丢弃受影响的项目响应。网络或检测错误记为“未能验证”，不会被标为已确认降智。清除锁定后仍需重新检测通过。</p><p>通过结果的有效期内，上游变化可能漏检；独立检测通过也不能证明每一次项目请求使用相同模型，无法保证零污染。需要更频繁检查时可选“每次请求”。</p></details>
     <section class="guard-records" id="guardLocksSection" aria-label="当前锁定" hidden><div class="guard-history-head"><h3>当前锁定</h3><span class="guard-record-meta" id="guardLocksCount"></span></div><div id="guardRecords"></div></section>
    </div>
   </section>
@@ -340,7 +340,7 @@ tbody tr.selected {background: var(--accent-soft)}
    <div class="toolbar"><div class="tabs" aria-label="供应商筛选"><button class="tab active" data-tab="all" aria-pressed="true">全部</button><button class="tab" data-tab="enabled" aria-pressed="false">已启用</button><button class="tab" data-tab="custom" aria-pressed="false">自定义</button></div><span class="count" id="count">加载中</span></div>
    <div class="table-wrap"><table><thead><tr><th>供应商 / 地址</th><th>兼容规则</th><th>历史过滤</th><th id="guardColumn">模型保护</th><th>操作</th></tr></thead><tbody id="providers"></tbody></table><div class="empty" id="empty" hidden>没有匹配的供应商</div></div>
   </section>
-  <section class="bottom"><div class="note-card"><div><h3>旧模型名称兼容</h3><p>用于 CC Switch 回退后的旧会话。重新启用新版模型路由前，请关闭。</p><p id="aliasDetail">正在读取…</p></div><button id="aliases" class="switch" type="button" role="switch" aria-label="旧模型名称兼容" aria-checked="false" disabled></button></div><div class="note-card"><div><h3>新增供应商无需改脚本</h3><p>先在 CC Switch 添加 Codex 供应商，再刷新此页并开启历史过滤。自定义规则会保存在本机。</p></div></div></section>
+  <section class="bottom"><div class="note-card" id="legacyAliasesCard"><div><h3>旧模型名称兼容</h3><p>用于 CC Switch 回退后的旧会话。重新启用新版模型路由前，请关闭。</p><p id="aliasDetail">正在读取…</p></div><button id="aliases" class="switch" type="button" role="switch" aria-label="旧模型名称兼容" aria-checked="false" disabled></button></div><div class="note-card"><div><h3>新增供应商无需改脚本</h3><p>先在 <span class="backend-name">CC Switch</span> 添加供应商，再刷新此页并开启历史过滤。自定义规则会保存在本机。</p></div></div></section>
   </div>
   <footer class="footer"><span id="serviceStatus">连接本地服务…</span><span id="updated">每 5 秒自动刷新状态</span></footer>
  </main>
@@ -517,7 +517,7 @@ function renderCurrentEvidence(record) {
  const host=$('guardSampleEvidence'),signature=JSON.stringify(record?{key:record.key,checkedAt:record.checkedAt,status:record.status,sampleEvidence:record.sampleEvidence}:null);
  if(host.evidenceSignature===signature)return;host.evidenceSignature=signature;host.replaceChildren(...(record?[makeGuardEvidence(record,true)]:[]));
 }
-function guardPolicy(id) { return state?.guard?.providers?.[id] || {enabled:false,ttlSeconds:600}; }
+function guardPolicy(id) { const p=state?.guard?.providers?.[id] || {enabled:false,ttlSeconds:600}; return state?.integration?.automaticProtection===false ? {...p,enabled:false} : p; }
 function guardRecords(id, model, effort) {
  return (state?.guard?.records || []).filter(r=>(!id||r.providerId===id)&&(!model||r.model===model)&&(!effort||r.effort===effort)).slice().sort((a,b)=>{
   const active = r => ['checking','suspect'].includes(r.status) ? 1 : 0;
@@ -611,7 +611,7 @@ function renderGuard() {
  const status=policy.enabled ? (record?.status==='blocked'?'blocked':current.available===false?'unverified':legacyPass?'legacy':needsRecheck?'recheck':record?.status || (selected.model&&!supported?'unsupported':'unchecked')) : 'disabled';
  $('guardBadge').textContent=g.error?'保护配置异常':checking?(record?.status==='blocked'?'重新检测中 · 保持锁定':record?.status==='suspect'?guardLabels.suspect:'检测中'):status==='unverified'&&record?.status==='unverified'?guardResultLabel(record):guardLabels[status] || '等待检测'; $('guardBadge').className='guard-state '+(g.error?'bad':status==='unverified'&&record?.status==='unverified'?guardRecordTone(record):guardTone(status));
  $('guardEnabled').setAttribute('aria-checked',String(policy.enabled)); $('guardEnabled').disabled=busy||!!g.error||!id||(!provider?.editable&&!policy.enabled);
- $('guardProvider').textContent=provider?.name || '未选择供应商'; $('guardModel').textContent=current.model ? current.model+' · '+(current.effort||'default') : '等待模型请求';
+ $('guardProvider').textContent=provider?.name || '未选择供应商'; $('guardModel').textContent=current.model ? (current.requestModel || current.model)+' · '+(current.effort||'default') : '等待模型请求';
  $('guardModelLabel').textContent='当前供应商 · '+(current.modelSource==='request'?'最近请求模型':current.modelSource==='config'?'Codex 配置默认模型':'请求模型来源');
  $('guardModelSource').textContent=current.modelSource==='request' ? '来源：代理捕获的最近请求 · '+guardTime(current.modelObservedAt)+'；不代表当前前台会话。' : current.modelSource==='config' ? '尚未捕获请求；当前显示 Codex 配置文件的默认值，不代表会话覆盖值。' : '尚未捕获请求，也未读取到配置模型。';
  $('guardCurrentDetail').textContent=policy.enabled ? '已开启 · '+(policy.ttlSeconds===0?'每次请求前检测':'检测结果最多复用 '+(policy.ttlSeconds/60)+' 分钟')+' · 完整校验后交付响应' : '此供应商未开启保护；历史过滤仍按独立规则执行。';
@@ -644,7 +644,7 @@ function renderGuard() {
  $('guardTest').textContent=checking?'正在检测，请稍候…':record?.cooldownActive?'立即手动重试':'立即检测所选模型';
  $('guardReset').hidden=record?.status!=='blocked';$('guardReset').disabled=busy||!!g.error||checking||record?.status!=='blocked';
  $('saveGuard').disabled=!!g.error;$('drawerGuardEnabled').disabled=!!g.error;$('drawerGuardTtl').disabled=!!g.error;
- $('guardActionNote').textContent=current.available===false ? (current.reason||'需先接入 CC Switch 当前供应商，才能独立检测。') : !selected.model ? '请选择手动检测模型。' : !supported ? '参考库支持模型：'+(g.models||[]).join('、') : checking ? '正在逐个采样；慢速推理可能暂时没有正文，请等待。整次最多 10 分钟；临时网络故障最多额外重试 3 次，保留已完成的有效样本。' : record?.cooldownActive ? '自动检测冷却至 '+guardTime(record.retryAt)+'，期间受保护请求继续被拦截，不产生重复检测。手动重试会立即产生上游计费请求。' : policy.enabled ? '检测期间原项目请求会等待；发生异常时不会把待校验的输出送入项目。手动选择的模型仅用于此次检测。' : '可先手动检测，再决定是否开启保护。保护关闭时，检测结果不会自动拦截项目请求。';
+ $('guardActionNote').textContent=current.available===false ? (current.reason||'需先接入当前网关供应商，才能独立检测。') : !selected.model ? '请选择手动检测模型。' : !supported ? '参考库支持模型：'+(g.models||[]).join('、') : checking ? '正在逐个采样；慢速推理可能暂时没有正文，请等待。整次最多 10 分钟；临时网络故障最多额外重试 3 次，保留已完成的有效样本。' : record?.cooldownActive ? '自动检测冷却至 '+guardTime(record.retryAt)+'，期间受保护请求继续被拦截，不产生重复检测。手动重试会立即产生上游计费请求。' : policy.enabled ? '检测期间原项目请求会等待；发生异常时不会把待校验的输出送入项目。手动选择的模型仅用于此次检测。' : '可先手动检测，再决定是否开启保护。保护关闭时，检测结果不会自动拦截项目请求。';
  const records=guardRecords().filter(r=>r.status==='blocked'), frag=document.createDocumentFragment();
  $('guardLocksSection').hidden=!records.length;$('guardLocksCount').textContent=records.length+' 项';
  for(const r of records) {
@@ -656,6 +656,33 @@ function renderGuard() {
   row.append(name,info,actions);frag.append(row);
  }
  $('guardRecords').replaceChildren(frag);
+ applyIntegrationMode();
+}
+function applyIntegrationMode() {
+ if(state?.integration?.mode!=='magpie-plugin')return;
+ document.querySelector('.top .subtitle').textContent='管理 Magpie 历史过滤规则，按需手动检测模型指纹。';
+ document.querySelector('.side-note').innerHTML='<strong>由你掌控每个供应商</strong>历史过滤按供应商开关。<br>模型指纹可手动检测。<br><br>切换实际供应商，请在<br><span class="backend-name">Magpie</span> 中操作。';
+ $('viewProtection').firstChild.nodeValue='模型检测';
+ for(const id of ['guardEnabled','guardTtl','drawerGuardEnabled','drawerGuardTtl','saveGuard','stripResponsesLiteHeader'])$(id).disabled=true;
+ for(const el of document.querySelectorAll('#providers .guard-cell button'))el.disabled=true;
+ $('guardBadge').textContent='手动检测模式';$('guardBadge').className='guard-state';
+ $('guardCurrentDetail').textContent='历史过滤在 Magpie 原生插件中执行。可手动检测模型；此模式不提供自动降智检测或切断保护。';
+ $('guardProtectionState').textContent='自动保护：原生插件不支持；检测记录仅作参考，不会阻止 Codex 请求。';
+ $('guardActionNote').textContent='手动检测使用独立请求并按上游计费；检测结果不自动切断直连 Magpie 的项目请求。';
+ $('guardPanel').querySelector('h2').textContent='模型指纹检测';
+ $('guardPanel').querySelector('.guard-intro .subtitle').textContent='手动检测与记录；自动切断未接入 Magpie 原生插件。';
+ $('guardSamplingDetail').textContent='采用 ModelTrace 网页同版题目，逐个采集 3 个独立样本，汇总出现强差异时增加至 6 个；临时网络故障整次最多额外重试 3 次，按上游计费。每次尝试最多 180 秒，整次最多 10 分钟。此模式仅手动检测，项目请求不会等待检测结果。';
+ $('guardSamplingDetail').nextElementSibling.textContent='检测结果仅描述本次独立探针。样本无效、指纹差异和上游网络错误分别记录原因，均不等于推理能力评分，也不会自动拦截项目请求。可展开数字证据，用同一组样本复核。';
+ $('guardMethodDetail').textContent='采用 ModelTrace 行为指纹和返回模型一致性检查。指纹匹配分不是可信概率，也不能证明推理质量或代码正确性。未收录模型不能检测；本模式没有自动切断功能。';
+ document.querySelectorAll('.guard-method p').forEach((p,i)=>{if(i>=3)p.hidden=true;});
+ $('guardOptions').hidden=true;
+ $('currentMode').textContent=state.integration.enabled ? 'Magpie 原生插件 · '+(state.currentPolicy.filter?'历史过滤已开启':'此供应商未开启过滤') : '历史过滤插件已关闭';
+ $('serviceStatus').textContent='Magpie 原生插件 · 管理服务 v'+state.filter.filterVersion;
+ $('filtered').textContent='—';$('filtered').nextElementSibling.textContent='调用统计见 Magpie 插件页面';
+ $('encrypted').textContent='—';$('encrypted').nextElementSibling.textContent='管理服务不截获直连请求';
+ const message='原生插件模式：Codex 直连 Magpie，不改写 base_url。历史过滤由 Magpie 执行；此处保留手动模型检测，自动切断不可用。插件报错或超时会按 Magpie 机制放行原请求。';
+ $('warning').textContent=state.filter.lastError ? '配置异常：'+state.filter.lastError : !state.integration.enabled ? 'Magpie 中的历史过滤插件已关闭，请在 Magpie 插件页面启用。' : state.filter.state==='waiting-for-magpie-direct' ? '原生插件已配置，但 Codex 配置仍指向其他地址；请核对 Magpie 接入。'+message : message;
+ $('warning').hidden=false;
 }
 function renderRows() {
  if (!state) return;
@@ -665,7 +692,7 @@ function renderRows() {
  for (const p of providers) {
   const tr = element('tr'); if (p.id === selectedId) tr.className = 'selected';
   const td = element('td'), name = element('div', null, 'provider-name'); name.append(element('span', p.name)); if (p.current) name.append(element('span','当前','pill green')); td.append(name, element('div',p.endpoint || '地址未配置 / 官方登录','endpoint'));
-  const rules = element('td'); rules.append(element('div',p.editable ? mode(p.rule) : '暂不支持配置','rule-label'),element('div',p.source === 'custom' ? '自定义规则' : '默认直通','rule-source'));
+  const rules = element('td'); rules.append(element('div',p.routeReason ? '路由暂不可验证' : p.editable ? mode(p.rule) : '暂不支持配置','rule-label'),element('div',p.routeReason || (p.source === 'custom' ? '自定义规则' : '默认直通'),'rule-source'));
   const toggleCell = element('td'), toggle = element('button',null,'switch'); toggle.type='button'; toggle.setAttribute('role','switch'); toggle.setAttribute('aria-checked',String(p.rule.historyFilter)); toggle.setAttribute('aria-label',p.name+' 历史过滤'); toggle.disabled = busy || !p.editable; toggle.addEventListener('click',() => changeRule(p.id,{...p.rule,historyFilter:!p.rule.historyFilter},state.revision)); toggleCell.append(toggle,element('span',p.rule.historyFilter ? '开启' : '关闭','switch-label'));
   const guardCell=element('td',null,'guard-cell'), gp=guardPolicy(p.id), guardToggle=element('button',null,'switch'); guardCell.hidden=!state.guard; guardToggle.type='button';guardToggle.setAttribute('role','switch');guardToggle.setAttribute('aria-checked',String(gp.enabled));guardToggle.setAttribute('aria-label',p.name+' 模型保护');guardToggle.disabled=busy||!!state.guard?.error||(!p.editable&&!gp.enabled);guardToggle.addEventListener('click',()=>changeGuard(p.id,{...gp,enabled:!gp.enabled},false,guardRevision));guardCell.append(guardToggle,element('span',gp.enabled?'开启':'关闭','switch-label'));
   const locked=guardRecords(p.id).find(r=>r.status==='blocked'); if(locked)guardCell.append(element('div',gp.enabled?'有模型已锁定':'已关闭 · 保留锁定','rule-source'));
@@ -676,6 +703,9 @@ function renderRows() {
 }
 function render() {
  const current=state.providers.find(p=>p.current), f=state.filter, stats=f.stats;
+ for(const el of document.querySelectorAll('.backend-name'))el.textContent=state.backend?.name||'CC Switch';
+ $('legacyAliasesCard').hidden=state.backend?.id==='magpie';
+ $('current').closest('.metric').querySelector('.label').lastChild.textContent=state.backend?.requestRouting?'配置默认供应商':'当前供应商';
  $('current').textContent=current?.name || '未选择供应商';
  $('currentMode').textContent=state.autoFailover ? '自动故障转移已开启 · 历史过滤暂不生效' : state.currentPolicy.filter ? '历史兼容已启用' : state.currentPolicy.stripResponsesLiteHeader ? 'Lite 协议兼容已启用' : '原样转发';
  $('currentHistoryEnabled').setAttribute('aria-checked',String(!!current?.rule.historyFilter));$('currentHistoryEnabled').disabled=busy||!current?.editable;
@@ -683,11 +713,11 @@ function render() {
  $('filtered').textContent=number(stats.filteredRequests); $('encrypted').textContent=number((stats.removedEncryptedContentItems||0)+(stats.removedReasoningItems||0));
  $('aliases').setAttribute('aria-checked',String(state.aliasCompatibility.enabled)); $('aliases').disabled=busy || !state.aliasCompatibility.configured;
  $('aliasDetail').textContent=state.aliasCompatibility.enabled ? '当前生效 '+state.aliasCompatibility.activeCount+' 个别名 · 已修复 '+number(stats.normalizedModelAliases)+' 次请求' : '当前已关闭';
- $('serviceStatus').textContent='服务 v'+f.filterVersion+' · '+(f.state==='filtering' ? '本地转发运行中' : f.state); $('serviceStatus').className='status-live';
+ $('serviceStatus').textContent=(state.backend?.name||'CC Switch')+' · 服务 v'+f.filterVersion+' · '+(f.state==='filtering' ? '本地转发运行中' : f.state); $('serviceStatus').className='status-live';
  $('versionBadge').textContent='v'+f.filterVersion;
  $('updated').textContent='更新于 '+new Date().toLocaleTimeString('zh-CN',{hour12:false}); $('dot').style.background='var(--good)';
- const warning=state.autoFailover ? 'CC Switch 自动故障转移已开启，历史过滤暂不执行。若需要稳定的历史兼容处理，请在 CC Switch 关闭自动故障转移。' : f.lastError ? '配置异常：'+f.lastError : f.state !== 'filtering' ? '服务已启动，尚未接入 Codex。请在 CC Switch 开启本地代理和 Codex 接管。' : '';
- $('warning').textContent=warning; $('warning').hidden=!warning; renderGuard(); renderRows();renderNavigation();freezeExpiredControls();
+ const warning=state.autoFailover ? 'CC Switch 自动故障转移已开启，历史过滤暂不执行。若需要稳定的历史兼容处理，请在 CC Switch 关闭自动故障转移。' : f.lastError ? '配置异常：'+f.lastError : f.state !== 'filtering' ? '服务已启动，尚未接入 Codex。请在 '+(state.backend?.name||'CC Switch')+' 中完成 Codex 接入，然后重新启动过滤服务。' : '';
+ $('warning').textContent=warning; $('warning').hidden=!warning; renderGuard(); renderRows();renderNavigation();applyIntegrationMode();freezeExpiredControls();
 }
 function renderRefreshControl() {
  const button = $('refresh');
@@ -735,8 +765,9 @@ async function changeRule(id, rule, revision) {
 function openDrawer(p) {
  selectedId=p.id; editRevision=state.revision; editGuardRevision=state.guard?.settingsRevision; focusBefore=document.activeElement;
  $('drawerTitle').textContent=p.name; $('drawerEndpoint').textContent=p.endpoint; keys.forEach(k=>$(k).checked=p.rule[k]);
+ if(state.integration?.mode==='magpie-plugin'){$('stripResponsesLiteHeader').checked=false;$('stripResponsesLiteHeader').closest('label').querySelector('small').textContent='Magpie 原生请求钩子不支持修改 HTTP 标头，此选项不可用。';}
  $('drawerSource').textContent=p.source==='custom' ? '此供应商正在使用你保存的规则。' : '此供应商未设置兼容规则，默认原样转发。模型保护独立设置。';
- $('drawerGuard').hidden=!state.guard; const gp=guardPolicy(p.id); $('drawerGuardEnabled').checked=gp.enabled;selectTtl('drawerGuardTtl',gp.ttlSeconds);$('drawerGuardStatus').textContent=p.current ? '此供应商当前正在使用，可在主页发起手动检测。' : '保存后待切换到此供应商生效；手动检测仅适用于当前供应商。';
+ $('drawerGuard').hidden=!state.guard || state.integration?.automaticProtection===false; const gp=guardPolicy(p.id); $('drawerGuardEnabled').checked=gp.enabled;selectTtl('drawerGuardTtl',gp.ttlSeconds);$('drawerGuardStatus').textContent=p.current ? '此供应商当前正在使用，可在主页发起手动检测。' : '保存后待切换到此供应商生效；手动检测仅适用于当前供应商。';
  $('drawer').hidden=false; renderRows(); $('closeDrawer').focus();
 }
 function closeDrawer() { $('drawer').hidden=true; selectedId=null; renderRows(); if(focusBefore?.isConnected) focusBefore.focus(); }

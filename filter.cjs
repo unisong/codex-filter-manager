@@ -10,6 +10,8 @@ const {randomBytes} = require('node:crypto');
 const {SERVICE, ADMIN, makeProxy, localOrigin} = require('./proxy.cjs');
 const {ConfigRouter, discoverCcSwitch, readLegacyModelAliases} = require('./config.cjs');
 const {createManagement} = require('./management.cjs');
+const {createMagpieAdapter, discoverMagpie, detectBackend, defaultDirectory} = require('./magpie.cjs');
+const {createMagpiePluginStore} = require('./magpie-plugin-store.cjs');
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 function jsonFile(filename) {
@@ -95,7 +97,7 @@ function parseArgs(argv) {
   const command = (argv.shift() || 'help').toLowerCase();
   if (!['help', 'start', 'serve', 'stop', 'status'].includes(command)) throw new Error('Use start, stop, status or serve.');
   const values = {};
-  const names = new Set(['port', 'upstream', 'config', 'runtime', 'cc-db']);
+  const names = new Set(['port', 'upstream', 'config', 'runtime', 'cc-db', 'backend', 'magpie-dir']);
   while (argv.length) {
     const key = argv.shift();
     if (!key.startsWith('--') || !names.has(key.slice(2)) || !argv.length) throw new Error('Invalid option: ' + key);
@@ -104,10 +106,13 @@ function parseArgs(argv) {
   const port = Number(values.port || 18181);
   if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Port must be an integer between 1024 and 65535.');
   const configHome = process.env.CODEX_HOME || path.join(os.homedir(), '.codex');
+  if (values.backend && !['auto', 'ccswitch', 'magpie'].includes(values.backend)) throw new Error('Backend must be auto, ccswitch or magpie.');
   return {command, port, filterOrigin: 'http://127.0.0.1:' + port,
     configPath: path.resolve(values.config || path.join(configHome, 'config.toml')),
     runtime: path.resolve(values.runtime || path.join(__dirname, '.runtime')),
     databasePath: values['cc-db'] && path.resolve(values['cc-db']),
+    backend: values.backend || 'auto',
+    magpieDirectory: path.resolve(values['magpie-dir'] || defaultDirectory()),
     upstream: values.upstream && localOrigin(values.upstream)};
 }
 function files(options) {
@@ -116,7 +121,12 @@ function files(options) {
 }
 function routerFor(options, backup, getUpstream, log) {
   return new ConfigRouter({configPath: options.configPath, filterOrigin: options.filterOrigin,
-    backupPath: backup, getUpstream, log});
+    backupPath: backup, getUpstream, backend: options.resolvedBackend, log});
+}
+function routingOptions(options) {
+  return {databasePath: path.resolve(options.databasePath || path.join(os.homedir(), '.cc-switch', 'cc-switch.db')),
+    upstreamOverride: options.upstream || null, backend: options.backend || 'auto',
+    magpieDirectory: path.resolve(options.magpieDirectory || defaultDirectory())};
 }
 function removeOwnState(filename, instance) {
   if (jsonFile(filename)?.instance === instance) fs.unlinkSync(filename);
@@ -124,8 +134,11 @@ function removeOwnState(filename, instance) {
 async function serve(options) {
   const locations = files(options);
   fs.mkdirSync(options.runtime, {recursive: true});
-  let upstream = options.upstream || discoverCcSwitch(options.databasePath);
-  if (new URL(upstream).port === String(options.port)) throw new Error('Filter port must differ from CC Switch port.');
+  const backend = detectBackend(options);
+  options = {...options, resolvedBackend: backend};
+  const discover = () => backend === 'magpie' ? discoverMagpie(options.magpieDirectory) : discoverCcSwitch(options.databasePath);
+  let upstream = options.upstream || discover();
+  if (new URL(upstream).port === String(options.port)) throw new Error('Filter port must differ from local gateway port.');
   const instance = randomBytes(12).toString('hex');
   const record = {service: SERVICE, pid: process.pid, instance, token: randomBytes(32).toString('hex'),
     filterOrigin: options.filterOrigin, configPath: options.configPath, startedAt: new Date().toISOString()};
@@ -156,18 +169,25 @@ async function serve(options) {
   try {
     router = routerFor(options, locations.backup, () => upstream, log);
     const databasePath = options.databasePath || path.join(os.homedir(), '.cc-switch', 'cc-switch.db');
+    const adapter = backend === 'magpie' ? createMagpieAdapter({directory:options.magpieDirectory,configPath:options.configPath,getUpstream:()=>upstream}) : null;
+    const pluginStore = adapter ? createMagpiePluginStore({directory:options.magpieDirectory}) : null;
+    if (pluginStore) {
+      const previous = jsonFile(path.join(options.runtime, 'provider-rules.json'));
+      pluginStore.install(previous?.providers || {});
+    }
+    const aliases = () => adapter ? new Map() : readLegacyModelAliases(path.join(options.runtime, 'legacy-model-aliases.json'), options.databasePath);
     const guard = require('./guard-service.cjs').createGuardService({runtime:options.runtime,databasePath,
-      configPath:options.configPath,getUpstream:()=>upstream,log});
-    const management = createManagement({databasePath, runtime: options.runtime, guard, log});
-    server = makeProxy({getUpstream: () => upstream, token: record.token, onStop: shutdown, log, dashboard: management,guard,
+      configPath:options.configPath,getUpstream:()=>upstream,adapter,log});
+    const management = createManagement({databasePath, runtime: options.runtime, guard, adapter, pluginStore, log});
+    server = makeProxy({getUpstream: () => upstream, token: record.token, onStop: shutdown, log, dashboard: management,guard:adapter ? undefined : guard,
       retry429: {maxAttempts: 30, baseDelayMs: 1500, maxDelayMs: 15000, budgetMs: 270000},
       getFilterPolicy: management.policy,
-      getModelAliases: () => readLegacyModelAliases(path.join(options.runtime, 'legacy-model-aliases.json'), options.databasePath),
-      getState: () => ({instance, state: stopping ? 'stopping' : router.state, upstream,
+      requestScopedPolicy: !!adapter, getModelAliases: aliases,
+      getState: () => ({instance, backend, state: stopping ? 'stopping' : router.state, upstream,
         currentPolicy: management.policy(),
-        legacyModelAliasCount: readLegacyModelAliases(path.join(options.runtime, 'legacy-model-aliases.json'), options.databasePath).size,
-        routingOptions: {databasePath: path.resolve(options.databasePath || path.join(os.homedir(), '.cc-switch', 'cc-switch.db')),
-          upstreamOverride: options.upstream || null},
+        legacyModelAliasCount: aliases().size,
+        routingOptions: routingOptions(options),
+        ...(pluginStore ? {integration:pluginStore.state()} : {}),
         filterOrigin: options.filterOrigin, configPath: options.configPath, lastError})});
     await new Promise((resolve, reject) => {
       server.once('error', reject);
@@ -176,8 +196,8 @@ async function serve(options) {
     const tick = () => {
       if (stopping) return;
       try {
-        upstream = options.upstream || discoverCcSwitch(options.databasePath);
-        if (new URL(upstream).port === String(options.port)) throw new Error('Filter port conflicts with CC Switch.');
+        upstream = options.upstream || discover();
+        if (new URL(upstream).port === String(options.port)) throw new Error('Filter port conflicts with local gateway.');
         router.sync();
         lastError = null;
       } catch (error) {
@@ -206,7 +226,9 @@ async function status(options) {
   const running = await health(record);
   if (running) {
     const {instance, ...publicState} = running;
-    return {...publicState, running: true, ccSwitchReachable: await reachable(running.upstream)};
+    const gatewayReachable = await reachable(running.upstream);
+    return {...publicState, running: true, gatewayReachable,
+      ...(running.backend === 'magpie' ? {} : {ccSwitchReachable: gatewayReachable})};
   }
   const state = !record ? 'stopped' : ownsProcess(record) ? 'unresponsive' : 'stale-state';
   return {service: SERVICE, running: false, state, recoveryBackup: fs.existsSync(files(options).backup)};
@@ -218,10 +240,10 @@ async function start(options) {
     if (running.filterOrigin !== options.filterOrigin || running.configPath !== options.configPath) {
       throw new Error('Running filter has different options. Stop it before changing config/port.');
     }
-    const expectedDatabase = path.resolve(options.databasePath || path.join(os.homedir(), '.cc-switch', 'cc-switch.db'));
-    if (!running.routingOptions || running.routingOptions.databasePath !== expectedDatabase
-        || running.routingOptions.upstreamOverride !== (options.upstream || null)) {
-      throw new Error('Running filter uses different or unknown database/upstream options. Stop it before changing --cc-db/--upstream or upgrading.');
+    const expected = routingOptions(options);
+    if (!running.routingOptions || Object.keys(expected).some(key => running.routingOptions[key] !== expected[key])
+        || running.backend !== detectBackend(options)) {
+      throw new Error('Running filter uses different or unknown database/upstream/backend options. Stop it before changing --backend/--magpie-dir/--cc-db/--upstream or upgrading.');
     }
     return status(options);
   }
@@ -229,6 +251,8 @@ async function start(options) {
   const args = [__filename, 'serve', '--port', String(options.port), '--config', options.configPath, '--runtime', options.runtime];
   if (options.upstream) args.push('--upstream', options.upstream);
   if (options.databasePath) args.push('--cc-db', options.databasePath);
+  if (options.backend) args.push('--backend', options.backend);
+  if (options.magpieDirectory) args.push('--magpie-dir', options.magpieDirectory);
   if (fs.existsSync(locations.log) && fs.statSync(locations.log).size > 4 * 1024 * 1024) {
     fs.copyFileSync(locations.log, locations.log + '.previous');
     fs.truncateSync(locations.log, 0);
@@ -260,7 +284,7 @@ async function stop(options) {
   if (running) {
     await request(record.filterOrigin, ADMIN + '/stop', record.token, 'POST');
     for (let count = 0; count < 100; count++) {
-      if (jsonFile(locations.state)?.instance !== record.instance) return {running: false, state: 'stopped', restored: true};
+      if (jsonFile(locations.state)?.instance !== record.instance) return {running: false, state: 'stopped', restored: running.backend !== 'magpie'};
       await delay(150);
     }
     throw new Error('Stop is still draining requests; retry status.');
@@ -269,19 +293,20 @@ async function stop(options) {
     throw new Error('Filter process ' + record.pid + ' is alive but not responding. Refusing to kill it; retry stop after it exits.');
   }
   const backup = jsonFile(locations.backup);
-  if (backup) {
+  const backend = detectBackend(options);
+  if (backup && backend !== 'magpie') {
     const restoreOptions = {...options, configPath: backup.configPath, filterOrigin: backup.filterOrigin};
     routerFor(restoreOptions, locations.backup, () => options.upstream || discoverCcSwitch(options.databasePath)).restore();
   }
   if (record) removeOwnState(locations.state, record.instance);
-  return {running: false, state: 'stopped', restored: !!backup};
+  return {running: false, state: 'stopped', restored: backend === 'magpie' ? false : !!backup};
 }
 
 async function main() {
   if (Number(process.versions.node.split('.')[0]) < 24) throw new Error('Node.js 24 or later is required (built-in SQLite and zstd).');
   const options = parseArgs(process.argv.slice(2));
   if (options.command === 'help') {
-    console.log('node filter.cjs start|stop|status|serve [--port 18181] [--upstream http://127.0.0.1:15721] [--config PATH] [--runtime PATH] [--cc-db PATH]');
+    console.log('node filter.cjs start|stop|status|serve [--port 18181] [--backend auto|ccswitch|magpie] [--magpie-dir PATH] [--upstream http://127.0.0.1:3425] [--config PATH] [--runtime PATH] [--cc-db PATH]');
   } else if (options.command === 'serve') await serve(options);
   else console.log(JSON.stringify(await ({start, stop, status}[options.command])(options), null, 2));
 }

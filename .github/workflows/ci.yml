@@ -28,3 +28,4 @@ jobs:
         run: |
           python dashboard-check.py
           python guard-dashboard-check.py
+          python magpie-dashboard-check.py

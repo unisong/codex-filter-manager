@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {createHash,randomUUID} = require('node:crypto');
 const {DatabaseSync} = require('node:sqlite');
-const {providerBase} = require('./config.cjs');
+const {providerBase,topString} = require('./config.cjs');
 const {probe: apiProbe, guardFailure} = require('./guard-transport.cjs');
 
 function readRoute(databasePath, upstream) {
@@ -29,20 +29,15 @@ function readRoute(databasePath, upstream) {
   } finally { db?.close(); }
 }
 
-function topString(text, name) {
-  const top = text.replace(/^\uFEFF/, '').split(/^\s*\[/m)[0];
-  const match = top.match(new RegExp('^\\s*' + name + '\\s*=\\s*("(?:[^"\\\\]|\\\\.)*"|\'[^\']*\')\\s*(?:#.*)?$', 'm'));
-  if (!match) return undefined;
-  try { return match[1][0] === "'" ? match[1].slice(1,-1) : JSON.parse(match[1]); } catch { return undefined; }
-}
-
 function createGuardService({runtime, databasePath, configPath, getUpstream, log = () => {},
-  probe = apiProbe, engineFactory}) {
+  probe = apiProbe, engineFactory, adapter}) {
   const active = new Map();
   const recent = new Map();
   const recentModels = new Map();
   const jobs = new Map();
   let lastRoute;
+  const providerRoutes = new Map();
+  let lastSelection;
   let settingsRevision = randomUUID();
   let routeRevision = randomUUID();
   const budget = {bytes: 0, limit: 64 * 1024 * 1024};
@@ -57,8 +52,24 @@ function createGuardService({runtime, databasePath, configPath, getUpstream, log
     onBlock: context => {
       for (const controller of active.get(context.key) || []) controller.abort();
     }});
-  function route() {
-    const current = readRoute(databasePath,getUpstream());
+  function route(requestModel) {
+    const current = adapter ? adapter.route(requestModel) : readRoute(databasePath,getUpstream());
+    if (adapter) {
+      const signature = current.digest + ':' + current.available;
+      const previous = providerRoutes.get(current.providerId);
+      if (previous && previous !== signature) {
+        routeRevision = randomUUID();
+        recent.delete(current.providerId); recentModels.delete(current.providerId);
+        engine.invalidate?.(current.providerId);
+      }
+      if (current.providerId) providerRoutes.set(current.providerId, signature);
+      if (requestModel === undefined) {
+        const selection = signature + ':' + current.requestModel;
+        if (lastSelection && lastSelection !== selection) routeRevision = randomUUID();
+        lastSelection = selection;
+      }
+      return current;
+    }
     const signature = current.available ? current.digest : 'unavailable';
     if (lastRoute && lastRoute.signature !== signature) {
       routeRevision = randomUUID();
@@ -74,24 +85,27 @@ function createGuardService({runtime, databasePath, configPath, getUpstream, log
   function hasEnabled() {
     const state = engine.snapshot();
     if (state.error) throw guardFailure(state.error);
-    return Object.values(state.providers).some(p => p.enabled);
+    return Object.entries(state.providers).some(([id, p]) => p.enabled
+      && (adapter ? id.startsWith('magpie:') : !id.startsWith('magpie:')));
   }
   const contextKey = (current,model,effort) => createHash('sha256').update(JSON.stringify([current.digest,model,effort])).digest('hex');
   function makeContext(input, transport, observed = false) {
-    const current = route();
+    const current = route(input?.model);
     if (!current.available) {
-      if ((current.providerId && engine.policy(current.providerId).enabled) || hasEnabled()) throw guardFailure(current.reason);
+      if ((current.providerId && engine.policy(current.providerId).enabled) || ((!adapter || !current.providerId) && hasEnabled())) throw guardFailure(current.reason);
       return null;
     }
     if (typeof input?.model !== 'string' || !input.model.trim() || input.model.length > 160 || /[\u0000-\u001f\u007f]/.test(input.model)) throw guardFailure('请求模型名称无法验证。');
     const effort = input.reasoning?.effort ?? 'default';
     if (typeof effort !== 'string' || !effort.trim() || effort.length > 40 || /[\u0000-\u001f\u007f]/.test(effort)) throw guardFailure('推理设置无法验证。');
-    const key = contextKey(current,input.model,effort);
+    const model = adapter ? current.model : input.model;
+    const key = contextKey(current,model,effort);
     const safeHeaders = {};
     for (const key of ['authorization','x-api-key','api-key','user-agent','originator','openai-beta','openai-organization','openai-project']) {
       if (transport.headers?.[key]) safeHeaders[key] = transport.headers[key];
     }
-    const context = {key,providerId:current.providerId,providerName:current.providerName,model:input.model,effort,
+    const context = {key,providerId:current.providerId,providerName:current.providerName,model,effort,
+      ...(adapter ? {requestModel:input.model, gatewayProvider:current.gatewayProvider} : {}),
       routeDigest:current.digest,transport:{...transport,headers:safeHeaders}};
     // Only project traffic updates the observed model. Manual probes must not
     // make their selected model look like a request from the user's chat.
@@ -106,7 +120,7 @@ function createGuardService({runtime, databasePath, configPath, getUpstream, log
     return context;
   }
   function assertRoute(context) {
-    const current = route();
+    const current = route(context.requestModel);
     if (!current.available || current.digest !== context.routeDigest) throw guardFailure('检测或请求期间供应商配置已切换，请在新路由下重试。');
   }
   async function prepare(input,transport,signal) {
@@ -133,13 +147,13 @@ function createGuardService({runtime, databasePath, configPath, getUpstream, log
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw guardFailure('手动检测设置无效。');
     const current = route();
     if (!current.available) throw guardFailure(current.reason);
-    if (payload.providerId && payload.providerId !== current.providerId) throw guardFailure('请先在 CC Switch 切换到此供应商，再运行检测。');
+    if (payload.providerId && payload.providerId !== current.providerId) throw guardFailure('请先在 ' + (adapter?.name || 'CC Switch') + ' 切换到此供应商，再运行检测。');
     if (payload.routeRevision !== undefined && payload.routeRevision !== routeRevision) throw guardFailure('供应商路由已改变，请刷新页面并核对所选模型后重试。');
     const previous = recent.get(current.providerId);
     const cached = previous?.routeDigest === current.digest ? previous : null;
     let text;
     try { text = fs.readFileSync(configPath,'utf8'); } catch { throw guardFailure('无法读取 Codex 配置。'); }
-    const configuredModel = topString(text,'model'), configuredEffort = topString(text,'model_reasoning_effort') || 'default';
+    const configuredModel = adapter ? current.model : topString(text,'model'), configuredEffort = topString(text,'model_reasoning_effort') || 'default';
     const model = payload.model ?? cached?.model ?? configuredModel;
     // An explicit model must not inherit another model's recently observed
     // effort. The UI submits both fields; omitted effort uses matching context.
@@ -152,24 +166,28 @@ function createGuardService({runtime, databasePath, configPath, getUpstream, log
     if (!headers) {
       let auth;
       try { auth = JSON.parse(fs.readFileSync(path.join(path.dirname(configPath),'auth.json'),'utf8')); } catch {}
-      if (!auth?.OPENAI_API_KEY) throw guardFailure('请先通过此供应商发送一次请求，再运行手动检测。');
-      headers = {authorization:'Bearer '+auth.OPENAI_API_KEY,originator:'codex_cli_rs'};
+      if (!auth?.OPENAI_API_KEY && !adapter) throw guardFailure('请先通过此供应商发送一次请求，再运行手动检测。');
+      // Magpie's local loopback gateway accepts keyless agent requests. Do not
+      // copy a provider API key or a Codex subscription token out of its files.
+      headers = adapter ? {originator:'codex_cli_rs'} : {authorization:'Bearer '+auth.OPENAI_API_KEY,originator:'codex_cli_rs'};
     }
     let apiPath = '/v1/responses';
     try { apiPath = new URL(providerBase(text).url).pathname.replace(/\/$/,'')+'/responses'; } catch {}
-    return makeContext({model,reasoning:{effort}},{upstream:getUpstream(),path:apiPath,headers});
+    const requestModel = adapter ? adapter.requestModel(model, current) : model;
+    if (adapter && adapter.route(requestModel).providerId !== current.providerId) throw guardFailure('手动检测模型必须属于当前 Magpie 供应商。');
+    return makeContext({model:requestModel,reasoning:{effort}},{upstream:getUpstream(),path:apiPath,headers});
   }
   function snapshot() {
     const current = route();
     const previous = recent.get(current.providerId);
     const cached = previous?.routeDigest === current.digest ? previous : null;
     let configured = {};
-    try { const text = fs.readFileSync(configPath,'utf8'); configured = {model:topString(text,'model'),effort:topString(text,'model_reasoning_effort') || 'default'}; } catch {}
+    try { const text = fs.readFileSync(configPath,'utf8'); configured = {model:adapter ? current.model : topString(text,'model'),effort:topString(text,'model_reasoning_effort') || 'default'}; } catch {}
     let model = cached?.model || configured.model, effort = cached?.effort || configured.effort;
     effort ||= 'default';
     const state = engine.snapshot();
     return {...state,settingsRevision,current:{key:current.available&&model ? contextKey(current,model,effort) : undefined,
-      providerId:current.providerId,model,effort,routeRevision,modelSource:cached?'request':model?'config':'unknown',
+      providerId:current.providerId,model,effort,routeRevision,requestModel:cached?.requestModel || current.requestModel,modelSource:cached?'request':model?'config':'unknown',
       modelObservedAt:cached?.observedAt,available:current.available,reason:current.reason},configured,
       currentRecords:(state.records || []).filter(record=>current.available && record.key===contextKey(current,record.model,record.effort)),
       recentModels:[...(recentModels.get(current.providerId)?.values() || [])].filter(context=>context.routeDigest===current.digest)
@@ -184,6 +202,9 @@ function createGuardService({runtime, databasePath, configPath, getUpstream, log
     },
     shouldInspect() {
       if (!hasEnabled()) return false;
+      // Magpie chooses a provider per request. prepare() decides after parsing
+      // its model, independently of the current config or another live chat.
+      if (adapter) return true;
       const current = route();
       return !current.available || engine.policy(current.providerId).enabled;
     },

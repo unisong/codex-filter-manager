@@ -18,6 +18,13 @@ function unquote(value) {
   return value.startsWith("'") ? value.slice(1, -1) : JSON.parse(value);
 }
 
+function topString(text, name) {
+  const top = text.replace(/^\uFEFF/, '').split(/^\s*\[/m)[0];
+  const match = top.match(new RegExp('^\\s*' + name + '\\s*=\\s*("(?:[^"\\\\]|\\\\.)*"|\'[^\']*\')\\s*(?:#.*)?$', 'm'));
+  if (!match) return undefined;
+  try { return unquote(match[1]); } catch { return undefined; }
+}
+
 function sectionProvider(line) {
   const match = line.match(/^\s*\[\s*model_providers\s*\.\s*("(?:[^"\\]|\\.)*"|'[^']*'|[A-Za-z0-9_-]+)\s*\]\s*(?:#.*)?$/);
   return match ? (/^["']/.test(match[1]) ? unquote(match[1]) : match[1]) : null;
@@ -157,14 +164,17 @@ function readLegacyModelAliases(filename, databasePath = path.join(os.homedir(),
 }
 
 class ConfigRouter {
-  constructor({configPath, backupPath, filterOrigin, getUpstream, log = () => {}}) {
+  constructor({configPath, backupPath, filterOrigin, getUpstream, backend = 'ccswitch', log = () => {}}) {
     this.configPath = path.resolve(configPath);
     this.backupPath = backupPath;
     this.filterOrigin = localOrigin(filterOrigin);
     this.getUpstream = getUpstream;
     this.log = log;
-    this.state = 'waiting-for-ccswitch';
+    this.waitingState = 'waiting-for-' + backend;
+    this.readOnly = backend === 'magpie';
+    this.state = this.waitingState;
     this.routes = new Map();
+    if (this.readOnly) return;
     if (fs.existsSync(backupPath)) {
       const backup = JSON.parse(fs.readFileSync(backupPath, 'utf8'));
       if (backup.configPath !== this.configPath || backup.filterOrigin !== this.filterOrigin || backup.version !== 1) {
@@ -174,6 +184,7 @@ class ConfigRouter {
     }
   }
   save() {
+    if (this.readOnly) throw new Error('Magpie middleware mode never writes Codex routing.');
     atomicWrite(this.backupPath, JSON.stringify({version: 1, configPath: this.configPath,
       filterOrigin: this.filterOrigin, routes: [...this.routes]}, null, 2));
   }
@@ -185,6 +196,10 @@ class ConfigRouter {
     const text = fs.readFileSync(this.configPath, 'utf8');
     const entry = providerBase(text);
     if (!entry) { this.changeState('waiting-for-supported-provider'); return; }
+    if (this.readOnly) {
+      this.changeState(sameEndpoint(entry.url, this.getUpstream()) ? 'magpie-plugin' : 'waiting-for-magpie-direct');
+      return;
+    }
     if (sameEndpoint(entry.url, this.filterOrigin)) {
       if (this.routes.get(entry.provider)?.filteredUrl !== entry.url) {
         throw new Error('Filter URL found without its original-address backup; refusing to guess.');
@@ -193,7 +208,7 @@ class ConfigRouter {
       return;
     }
     const upstream = this.getUpstream();
-    if (!sameEndpoint(entry.url, upstream)) { this.changeState('waiting-for-ccswitch'); return; }
+    if (!sameEndpoint(entry.url, upstream)) { this.changeState(this.waitingState); return; }
     if (new URL(entry.url).search || new URL(entry.url).hash) {
       throw new Error('Query strings and fragments in provider base_url are not supported.');
     }
@@ -209,6 +224,7 @@ class ConfigRouter {
     this.log('config-attached', {provider: entry.provider});
   }
   restore() {
+    if (this.readOnly) return;
     if (!fs.existsSync(this.configPath)) return;
     let text = fs.readFileSync(this.configPath, 'utf8');
     const original = text;
@@ -227,4 +243,4 @@ class ConfigRouter {
   }
 }
 
-module.exports = {atomicWrite, providerBase, replaceBase, sameEndpoint, discoverCcSwitch, providerPolicy, readFilterPolicy, readLegacyModelAliases, ConfigRouter};
+module.exports = {atomicWrite, topString, providerBase, replaceBase, sameEndpoint, discoverCcSwitch, providerPolicy, readFilterPolicy, readLegacyModelAliases, ConfigRouter};

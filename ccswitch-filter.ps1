@@ -7,7 +7,9 @@ param(
     [string]$Upstream,
     [string]$Config,
     [string]$Runtime,
-    [string]$CcDb
+    [string]$CcDb,
+    [ValidateSet('auto', 'ccswitch', 'magpie')][string]$Backend = 'auto',
+    [string]$MagpieDir
 )
 $ErrorActionPreference = 'Stop'
 $allowDownload = $Action -in @('Start', 'Run')
@@ -22,6 +24,8 @@ if ($Action -eq 'Test') {
     if ($Config) { $filterArguments += @('--config', $Config) }
     if ($Runtime) { $filterArguments += @('--runtime', $Runtime) }
     if ($CcDb) { $filterArguments += @('--cc-db', $CcDb) }
+    $filterArguments += @('--backend', $Backend)
+    if ($MagpieDir) { $filterArguments += @('--magpie-dir', $MagpieDir) }
     & $nodePath @filterArguments
 }
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
