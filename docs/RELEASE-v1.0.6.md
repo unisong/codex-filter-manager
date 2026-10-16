@@ -8,7 +8,7 @@
 
 CC Switch 继续通过本地代理过滤；Magpie 继续通过原生中间件过滤，不改写直连 Magpie 的 Codex 地址。新安装默认不启用供应商规则或保护，已有配置保留。过滤与评分算法不变。
 
-Magpie 完整工作台单独从 [原插件仓库 v0.3.0](https://github.com/unisong/magpie-codex-history-filter/releases/tag/v0.3.0) 分发；只需过滤可直接用 Magpie 原生页面，无需打开独立工作台。社区市场版本不会因本次 GitHub 发布自动升级。
+Magpie 完整工作台单独从 [原插件仓库 v0.2.0](https://github.com/unisong/magpie-codex-history-filter/releases/tag/v0.2.0) 分发；只需过滤可直接用 Magpie 原生页面，无需打开独立工作台。社区市场版本不会因本次 GitHub 发布自动升级。
 
 ## 升级
 
