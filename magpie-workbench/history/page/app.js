@@ -8,8 +8,8 @@
       introTitle: '选择需要兼容旧会话的供应商',
       intro: '开启后清理旧推理密文和可移植历史的服务器 ID。所有供应商默认关闭，普通正文和工具结果会保留。',
       scope: '只用历史过滤，在本页设置即可；运行情况可到 Magpie 扩展／插件页面查看，无需登录或打开独立工作台。需要模型监测与保护时，再打开桌面“Magpie 模型工作台”（无需账号登录）。本页不修改 Codex 接入地址。',
-      searchLabel: '搜索供应商', search: '搜索供应商名称或 ID', viewLabel: '显示范围',
-      all: '全部供应商', enabled: '已开启过滤', configured: '已有规则', provider: '供应商',
+      searchLabel: '搜索供应商', search: '搜索供应商名称或 ID', provider: '供应商',
+      enabledOnly: n => `只看已开启 · ${n}`, clearFilter: '取消筛选以搜索全部供应商。',
       filter: '历史过滤', include: '保留新响应密文', on: '开启', off: '关闭', inactive: '未生效',
       helpTitle: '两个开关有什么区别？',
       helpFilter: '历史过滤：清理请求中旧 reasoning、明确标记的加密内容和可移植条目的服务器 ID，缓解切换供应商后的历史验证错误。',
@@ -29,15 +29,15 @@
       options_conflict: '其他窗口修改了相同规则或别名，本次未覆盖。请撤销本页修改、刷新列表后重试。',
       timeout: '未确认操作结果，请稍后刷新列表核对；未自动重试保存。',
       failed: '操作未完成：', retry: '。可点击刷新列表重试。', clean: '没有未保存的修改',
-      dirty: n => `${n} 个供应商规则待保存`, count: (shown, n, on) => `显示 ${shown} / ${n} 个供应商 · ${on} 个开启`,
+      dirty: n => `${n} 个供应商规则待保存`, count: (shown, n, on, narrowed) => `共 ${n} 个供应商 · 已开启 ${on} 个${narrowed ? ` · 找到 ${shown} 个` : ''}`,
     },
     en: {
       subtitle: 'Manage history compatibility for each provider', refresh: 'Refresh list', refreshing: 'Refreshing…',
       introTitle: 'Choose providers that need history compatibility',
       intro: 'Removes old reasoning ciphertext and optional server IDs from portable history. Every provider defaults to off. Readable messages and tool results are preserved.',
       scope: 'For history filtering only, configure it here and check runtime status in Magpie Extensions / Plugins. No workbench or sign-in is needed. Open the desktop workbench only for optional model monitoring and protection; it also requires no account login. This page never edits the Codex endpoint.',
-      searchLabel: 'Search providers', search: 'Search provider name or ID', viewLabel: 'Show providers',
-      all: 'All providers', enabled: 'Filtering enabled', configured: 'With saved rules', provider: 'Provider',
+      searchLabel: 'Search providers', search: 'Search provider name or ID', provider: 'Provider',
+      enabledOnly: n => `Enabled only · ${n}`, clearFilter: 'Turn off the filter to search all providers.',
       filter: 'History filter', include: 'Keep new ciphertext', on: 'On', off: 'Off', inactive: 'Inactive',
       helpTitle: 'What do the two switches do?',
       helpFilter: 'History filter: removes old reasoning, explicitly typed encrypted content and optional server IDs from portable items to reduce history verification errors after switching providers.',
@@ -57,10 +57,10 @@
       options_conflict: 'Another window changed the same rule or aliases. Nothing overwritten. Discard local changes, refresh, then retry.',
       timeout: 'Operation not confirmed. Refresh later to verify; saving was not automatically retried.',
       failed: 'Operation incomplete: ', retry: '. Refresh the list to retry.', clean: 'No unsaved changes',
-      dirty: n => `${n} provider rule(s) to save`, count: (shown, n, on) => `${shown} / ${n} providers · ${on} enabled`,
+      dirty: n => `${n} provider rule(s) to save`, count: (shown, n, on, narrowed) => `${n} providers · ${on} enabled${narrowed ? ` · ${shown} found` : ''}`,
     },
   };
-  let lang = 'zh', base = {}, draft = {}, providers = [], loaded = false, busy = false, cooling = false;
+  let lang = 'zh', base = {}, draft = {}, providers = [], loaded = false, busy = false, cooling = false, enabledOnly = false;
   let status = {key: 'connecting', kind: ''};
   const text = () => words[lang];
   const dirty = () => M.differences(base, draft);
@@ -110,16 +110,16 @@
     $('refresh').disabled = busy;
     $('refresh').textContent = text()[busy && status.key === 'loading' ? 'refreshing' : 'refresh'];
     $('search').disabled = !loaded;
-    $('scope').disabled = !loaded;
+    $('enabledOnly').disabled = !loaded;
+    $('enabledOnly').setAttribute('aria-pressed', String(enabledOnly));
     $('save').disabled = busy || cooling || !loaded || !hasChanges;
     $('save').textContent = text()[busy && status.key === 'saving' ? 'saving' : 'save'];
     $('discard').disabled = busy || !hasChanges;
     $('saveState').textContent = hasChanges ? text().dirty(new Set(changes.map(c => c.id)).size) : text().clean;
     if (!loaded) return;
-    const all = M.rows(draft, providers), query = $('search').value.trim().toLocaleLowerCase();
-    const shown = all.filter(p => (!$('scope').value || $('scope').value === 'all' || ($('scope').value === 'on' ? p.on : p.configured))
-      && (!query || [p.name, p.id, p.target].some(v => v.toLocaleLowerCase().includes(query))));
-    $('count').textContent = text().count(shown.length, all.length, all.filter(p => p.on).length);
+    const {rows: shown, total, enabled, narrowed} = M.view(base, draft, providers, {enabledOnly, query: $('search').value});
+    $('enabledOnly').textContent = text().enabledOnly(enabled);
+    $('count').textContent = text().count(shown.length, total, enabled, narrowed);
     $('providers').replaceChildren(...shown.map(row => {
       const card = node('div', 'provider');
       const identity = node('div', 'identity');
@@ -134,7 +134,7 @@
       return card;
     }));
     $('empty').hidden = shown.length !== 0;
-    $('empty').textContent = all.length ? text().empty : text().noProviders;
+    $('empty').textContent = !total ? text().noProviders : text().empty + (enabledOnly ? ' ' + text().clearFilter : '');
   }
   async function refresh() {
     if (busy) return;
@@ -155,7 +155,7 @@
   }
   $('refresh').onclick = () => refresh();
   $('search').oninput = paint;
-  $('scope').onchange = paint;
+  $('enabledOnly').onclick = () => { enabledOnly = !enabledOnly; paint(); };
   $('providers').onchange = e => {
     const input = e.target;
     if (input.tagName !== 'INPUT' || busy || !loaded) return;

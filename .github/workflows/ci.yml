@@ -20,7 +20,7 @@ jobs:
         run: npm run release:check
       - name: Windows launcher checks (temporary configuration only)
         shell: powershell
-        run: .\scripts\launcher-check.ps1
+        run: .\tests\launcher\launcher-check.ps1
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -32,5 +32,7 @@ jobs:
         run: |
           python tests/dashboard-check.py
           python tests/guard-dashboard-check.py
-          python tests/magpie-dashboard-check.py
           python magpie-workbench/test/web-check.py
+          python magpie-workbench/test/filter-ui-check.py
+          python magpie-workbench/test/interval-ui-check.py
+          python magpie-workbench/test/schedule-ui-check.py

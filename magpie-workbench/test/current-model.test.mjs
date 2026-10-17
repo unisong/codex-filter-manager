@@ -58,8 +58,8 @@ test('official usage reader coalesces polls and falls back to newest history wit
 test('both workbenches share theme, icon and model-selection contract byte for byte', () => {
   const cc = new URL('../../codex-filter-manager/', import.meta.url);
   // A standalone Magpie archive need not contain its sibling CC repository.
-  if (fs.existsSync(cc)) for (const [magpie, ccs] of [['web/workbench-theme.css', 'assets/workbench-theme.css'],
-    ['web/current-selection.js', 'assets/current-selection.js'], ['web/icon.svg', 'assets/favicon.svg']]) {
+  if (fs.existsSync(cc)) for (const [magpie, ccs] of [['web/workbench-theme.css', 'web/assets/workbench-theme.css'],
+    ['web/current-selection.js', 'web/assets/current-selection.js'], ['web/icon.svg', 'web/assets/favicon.svg']]) {
     assert.deepEqual(fs.readFileSync(new URL('../' + magpie, import.meta.url)), fs.readFileSync(new URL(ccs, cc)));
   }
   const context = vm.createContext({});

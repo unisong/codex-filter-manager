@@ -1,12 +1,12 @@
 # 参与开发
 
-欢迎提交可复现的兼容性问题、文档改进与修复。请先阅读 [README](README.md)、[模型保护边界](MODEL-GUARD.md) 和 [安全说明](SECURITY.md)。
+欢迎提交可复现的兼容性问题、文档改进与修复。请先阅读 [README](README.md)、[模型保护边界](docs/MODEL-GUARD.md) 和 [安全说明](SECURITY.md)。
 
 ## 环境与启动
 
 开发需要 Node.js 24+，核心运行时没有第三方 npm 依赖。Windows 启动器面向 Windows 10 / 11 的 x64 / ARM64，PowerShell 脚本应兼容系统自带的 Windows PowerShell 5.1。
 
-CC Switch 模式启动会接管当前用户的 Codex 配置；Magpie 模式安装本地中间件并保持 Codex 配置只读。开发与验证应使用独立临时目录、模拟 CC Switch 数据库和 Magpie 配置文件；不要让测试操作正式会话、数据库、供应商余额或真实项目。
+CC Switch 服务启动会接管当前用户的 Codex 配置；Magpie 使用独立加载的完整工作台插件，不修改 Codex 地址。根目录服务不再支持旧 Magpie 模式。开发与验证应使用独立临时目录、模拟 CC Switch 数据库和 Magpie 配置文件；不要让测试操作正式会话、数据库、供应商余额或真实项目。
 
 ## 目录与职责
 
@@ -15,23 +15,23 @@ CC Switch 模式启动会接管当前用户的 Codex 配置；Magpie 模式安�
 | `filter.cjs` | 兼容现有命令和启动器的轻量入口，调用 `src/filter.cjs` |
 | `src/filter.cjs` | 后台生命周期、启动/停止、配置接入 |
 | `src/config.cjs` | CC Switch 发现、只读策略、精确地址恢复 |
-| `src/magpie.cjs` | Magpie 只读供应商发现、请求路由与隔离规则 |
-| `src/magpie-plugin-store.cjs` | 维护 Magpie 中本工具的插件条目与管理页规则 |
-| `magpie-plugin/` | 原生请求钩子及与独立代理共用的历史清理算法 |
+| `src/service-backend.cjs` | 识别 Magpie 配置并提示使用完整工作台，避免误启动独立服务 |
+| `src/history-filter.mjs`、`src/portable-web-search.mjs` | CC Switch 代理的历史清理与搜索文字转换 |
 | `magpie-workbench/` | 完整 Magpie 本地工作台源码、原生设置页、本机后台和独立离线测试 |
 | `src/proxy.cjs` | HTTP/SSE 转发、历史清理、429 重试 |
 | `src/management.cjs` | 本机管理 API、规则与页面 |
 | `src/diagnostics.cjs` | 字段白名单日志、运行中轮转、脱敏诊断报告 |
-| `web/dashboard.html`、`assets/` | 不依赖前端构建的可视化页面、共享样式与图标 |
+| `web/dashboard.html`、`web/assets/` | 不依赖前端构建的可视化页面、共享样式与图标 |
 | `src/guard.cjs` | 指纹检查、通过缓存、锁定和检测历史 |
 | `src/guard-evidence.cjs` | 逐样本与汇总评分、数字证据结构校验 |
 | `src/guard-retry.cjs` | 整次检测共享重试预算与可取消退避 |
 | `src/guard-service.cjs` | 路由上下文、请求授权与引擎衔接 |
 | `src/guard-transport.cjs` | 探针请求、完整响应验证与缓存预算 |
 | `tests/` | Node 自动测试与 Python 离线浏览器检查 |
-| `scripts/` | 测试入口、启动器验证、打包、截图与手动连通性检查 |
+| `scripts/` | 启动实现、打包、截图与手动连通性检查 |
+| `tests/fixtures/` | 测试使用的证据、样例与固定数据 |
 | `vendor/modeltrace/` | 固定版本的第三方出题器、评分器、参考库与许可 |
-| `start.ps1`、`Start.bat` 等 | Windows 一键启动、停止和状态入口 |
+| `Start.bat` 等 | Windows 一键启动、停止和状态入口；实现位于 `scripts/windows/` |
 
 ## 命令行与自定义路径
 
@@ -50,15 +50,14 @@ node filter.cjs diagnose
 
 ```powershell
 node filter.cjs start --backend ccswitch --port 18181 --upstream http://127.0.0.1:15721 --config "D:\Codex\config.toml" --runtime "D:\FilterData" --cc-db "D:\CCSwitch\cc-switch.db"
-node filter.cjs start --backend magpie --magpie-dir "D:\MagpieData" --upstream http://127.0.0.1:3425
 ```
 
-Magpie 默认数据目录为 `%USERPROFILE%\.config\magpie`，从 `settings.json` 的 `port` 读取端口，未设置时为 `3425`。便携目录或 `MAGPIE_ADDR` 自定义地址需显式指定。两种模式的具体边界见 [Magpie 适配说明](docs/MAGPIE.md)。
+Magpie 请按 [完整工作台说明](magpie-workbench/README.md)加载 `magpie-workbench/`，使用该目录的启动和诊断入口；不再使用根目录的 `--backend magpie` 或 `--magpie-dir`。
 
-Windows 启动器对应 `-Backend`、`-Port`、`-Upstream`、`-Config`、`-Runtime`、`-CcDb` 和 `-MagpieDir`，例如：
+Windows 启动器对应 `-Backend`（仅 auto / ccswitch）、`-Port`、`-Upstream`、`-Config`、`-Runtime` 和 `-CcDb`，例如：
 
 ```powershell
-powershell -File .\start.ps1 -Action Diagnose -Runtime "D:\FilterData" -Config "D:\Codex\config.toml"
+powershell -File .\scripts\windows\start.ps1 -Action Diagnose -Runtime "D:\FilterData" -Config "D:\Codex\config.toml"
 ```
 
 诊断不会启动服务或改写配置；需要已安装 Node.js 24+ 或启动器缓存的便携运行时。报告写入所选运行目录的 `reports/`。启动器的 `ExecutionPolicy Bypass` 仅作用于当前进程，不修改系统执行策略。
@@ -85,7 +84,10 @@ node --test tests/*.test.cjs
 python -m pip install playwright
 python .\tests\dashboard-check.py
 python .\tests\guard-dashboard-check.py
-python .\tests\magpie-dashboard-check.py
+python .\magpie-workbench\test\web-check.py
+python .\magpie-workbench\test\filter-ui-check.py
+python .\magpie-workbench\test\interval-ui-check.py
+python .\magpie-workbench\test\schedule-ui-check.py
 ```
 
 这些脚本使用模拟供应商数据，不应连接正式页面或读取真实凭据。`scripts/live-check.cjs` 与 `scripts/live-guard-check.cjs` 属于**明确手动执行的真实供应商检查**，可能调用模型并计费，不应放入 CI 或默认测试链。

@@ -20,7 +20,7 @@ output = args.output or root / 'docs/images'
 output.mkdir(parents=True, exist_ok=True)
 html = (root / 'web' / 'dashboard.html').read_text(encoding='utf-8').replace('__FILTER_TOKEN_JSON__', '"demo-only"')
 version = int(re.search(r'FILTER_VERSION\s*=\s*(\d+)', (root / 'src' / 'proxy.cjs').read_text(encoding='utf-8')).group(1))
-fixture_evidence = json.loads(subprocess.check_output(['node', 'scripts/guard-fixtures.cjs'], cwd=root, text=True))
+fixture_evidence = json.loads(subprocess.check_output(['node', 'tests/fixtures/guard-fixtures.cjs'], cwd=root, text=True))
 off = {'historyFilter': False, 'preserveEncryptedInclude': True, 'stripResponsesLiteHeader': False}
 providers = [
     {'id': 'demo-main', 'name': '演示供应商 · 日常开发', 'endpoint': 'https://api.example.com/v1', 'current': True, 'editable': True, 'source': 'custom', 'rule': {**off, 'historyFilter': True}},
@@ -33,7 +33,7 @@ record = {'key': 'demo-key', 'providerId': 'demo-main', 'providerName': provider
 history = [{**record, 'id': f'demo-history-{i}', 'source': 'manual' if i == 0 else 'automatic', 'checkedAt': (now - timedelta(minutes=30*i)).isoformat()} for i in range(24)]
 history[1].update(status='unverified', prediction='gpt-6-luna', score=.999, sampleEvidence=[fixture_evidence['different']], reason='演示数据：已完成轮次有明显模型差异，复核未完成；没有新增持久锁定。')
 history[2].update(status='unverified', score=None, prediction=None, sampleEvidence=[], reason='检测上游返回 HTTP 403：上游拒绝访问。演示数据，这不是降智结论。')
-state = {'providers': providers, 'revision': 'demo-revision', 'currentPolicy': {'filter': True}, 'autoFailover': False,
+state = {'providers': providers, 'revision': 'demo-revision', 'productVersion': '1.0.8', 'currentPolicy': {'filter': True}, 'autoFailover': False,
     'aliasCompatibility': {'configured': False, 'enabled': False, 'activeCount': 0},
     'filter': {'filterVersion': version, 'state': 'filtering', 'stats': {'filteredRequests': 128, 'removedEncryptedContentItems': 436}},
     'guard': {'models': ['gpt-6-astra', 'gpt-6-sol'], 'providers': {'demo-main': {'enabled': True, 'ttlSeconds': 1800}}, 'settingsRevision': 'demo-guard', 'records': [record], 'history': history, 'historyLimit': 100, 'current': {'providerId': 'demo-main', 'model': record['model'], 'effort': record['effort'], 'available': True, 'key': record['key']}}}
@@ -45,8 +45,12 @@ for snapshot in [state, configured_state]:
         currentRecords=[deepcopy(record)])
     snapshot['guard']['current'].update(modelSource='request', modelObservedAt=now.isoformat(), routeRevision='demo-route')
 for provider in state['providers']:
-    provider.update(source='default', rule=deepcopy(off))
-state['currentPolicy'] = {'filter': False}
+    provider['rule'] = deepcopy(off)
+    provider['source'] = 'default'
+state['providers'][0]['rule'] = {**off, 'historyFilter': True}
+state['providers'][0]['source'] = 'custom'
+state['providers'][2]['rule'] = {**off, 'historyFilter': True}
+state['providers'][2]['source'] = 'custom'
 state['filter']['stats'] = {'filteredRequests': 0, 'removedEncryptedContentItems': 0}
 state['guard'].update(providers={}, records=[], currentRecords=[], history=[])
 with sync_playwright() as p:
@@ -62,18 +66,18 @@ with sync_playwright() as p:
         if request.url.endswith('/ui'):
             route.fulfill(content_type='text/html; charset=utf-8', body=html)
         elif request.url.endswith('/favicon.svg'):
-            route.fulfill(content_type='image/svg+xml', body=(root / 'assets/favicon.svg').read_text(encoding='utf-8'))
+            route.fulfill(content_type='image/svg+xml', body=(root / 'web/assets/favicon.svg').read_text(encoding='utf-8'))
         elif request.url.endswith('/api/state'):
             route.fulfill(content_type='application/json', body=json.dumps(state, ensure_ascii=False))
         elif request.url.endswith(('/workbench-theme.css', '/current-selection.js')):
-            asset = root / 'assets' / request.url.rsplit('/', 1)[-1]
+            asset = root / 'web/assets' / request.url.rsplit('/', 1)[-1]
             route.fulfill(content_type='text/css' if asset.suffix == '.css' else 'text/javascript', body=asset.read_bytes())
         else:
             route.abort()
     page.route('**/*', route_request)
     page.goto('http://127.0.0.1:19999/__codex_filter__/ui')
     expect(page.locator('#current')).to_have_text(providers[0]['name'])
-    expect(page.locator('a.github-link')).to_have_count(2)
+    expect(page.locator('.side-links a')).to_have_count(2)
     screenshots = []
     for view in ([] if args.settings_only else ['providers', 'protection', 'history', 'settings']):
         if view == 'protection':
@@ -81,7 +85,7 @@ with sync_playwright() as p:
             page.locator('#refresh').click()
             expect(page.locator('#guardEnabled')).to_have_attribute('aria-checked', 'true')
         elif view == 'providers':
-            expect(page.locator('#currentHistoryEnabled')).to_have_attribute('aria-checked', 'false')
+            expect(page.locator('#currentHistoryEnabled')).to_have_attribute('aria-checked', 'true')
             expect(page.locator('#guardEnabled')).to_have_attribute('aria-checked', 'false')
         page.locator('[data-view="' + view + '"]').click()
         expect(page.locator('#refresh')).to_have_attribute('aria-busy', 'false')
@@ -92,7 +96,7 @@ with sync_playwright() as p:
         if view == 'protection':
             page.locator('#guardAdjust').click()
             expect(page.locator('#guardSelectionEditor')).to_have_js_property('open', True)
-            page.screenshot(path=str(output / 'monitor-settings.png'), animations='disabled')
+            page.screenshot(path=str(output / 'monitor-settings.png'), animations='disabled', full_page=True)
             screenshots.append('monitor-settings.png')
             page.locator('#guardAdjust').click()
     state = deepcopy(configured_state)
@@ -109,9 +113,7 @@ with sync_playwright() as p:
     expect(settings_page.locator('#preserveEncryptedInclude')).to_be_checked()
     expect(settings_page.locator('#stripResponsesLiteHeader')).not_to_be_checked()
     panel = settings_page.locator('.drawer-panel').bounding_box()
-    source = settings_page.locator('#drawerSource').bounding_box()
-    settings_page.screenshot(path=str(output / 'provider-settings.png'), clip={
-        'x': panel['x'], 'y': panel['y'], 'width': panel['width'], 'height': source['y'] + source['height'] + 20 - panel['y']})
+    settings_page.screenshot(path=str(output / 'provider-settings.png'), clip=panel)
     screenshots.append('provider-settings.png')
     assert not errors, errors
     browser.close()

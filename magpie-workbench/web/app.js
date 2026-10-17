@@ -1,8 +1,52 @@
 (() => {
   const $ = id => document.getElementById(id);
   let state = null, models = [], page = 1, editing = null, detailId = null, detail = null, updating = null, manualModel = null;
+  const pageMeta = {
+    filters: ['历史过滤', '按供应商管理旧会话兼容规则，与模型保护分别控制。'],
+    targets: ['模型监测', '自动识别最近实际路由，确认检测目标、保护模式与当前结果。'],
+    history: ['检测记录', '查看每轮取样结果与独立复测证据，最多保留最近 100 轮。'],
+    settings: ['设置与诊断', '只连接本机 Magpie，查看运行状态并导出脱敏诊断。']
+  };
+  let activeView = 'targets';
   const H = globalThis.HistorySettings;
-  let filterBase = null, filterDraft = null, filterProviders = [], filterBusy = false, filterEnabled = true;
+  let filterBase = null, filterDraft = null, filterProviders = [], filterBusy = false, filterEnabled = true, filterEnabledOnly = false;
+  let scheduleBusy = false, connected = false;
+  const scheduled = t => t && t.mode !== 'manual' && t.scheduleEnabled !== false;
+  const nextCheck = t => '下次 ' + date(t.nextAt);
+  function renderMonitoring() {
+    const enabled = state.targets.filter(scheduled), running = state.targets.filter(t => t.running), stopping = running.filter(t => t.stopping);
+    $('monitoringControl').hidden = (activeView !== 'targets' && activeView !== 'history') || (!enabled.length && !running.length && !stopping.length);
+    $('monitoringControl').dataset.status = !connected || state.health ? 'unknown' : stopping.length ? 'stopping' : running.length ? 'running' : enabled.length ? 'active' : 'idle';
+    $('monitoringStatus').textContent = !connected ? '连接中断 · 检测状态未确认' : state.health ? '检测服务异常 · 暂停新增取样'
+      : stopping.length ? '正在取消本轮检测' : enabled.length ? '定期检测已开启 · ' + enabled.length + ' 个模型' : '定期检测已停止';
+    const next = enabled.filter(t => !t.running).sort((a, b) => a.nextAt - b.nextAt)[0];
+    $('monitoringDetail').textContent = !connected ? '无法确认后台是否仍在检测，请重新连接后停止。'
+      : state.health ? state.health : [running.length ? '检测中 ' + running.length + ' 项' : '', next?.nextAt ? nextCheck(next) : '',
+        enabled.length ? '任务结束后点右侧停止；不会自动随 Codex 任务结束停止。' : '不会自动取样；已有模型暂停与过滤规则保留。'].filter(Boolean).join(' · ');
+    $('stopAllChecks').disabled = scheduleBusy || !connected || !!state.health || (!enabled.length && !running.some(t => !t.stopping));
+    $('stopAllChecks').textContent = scheduleBusy ? '正在停止…' : '停止全部检测';
+  }
+  async function controlSchedule(t, op = scheduled(t) ? 'stop' : 'start') {
+    if (scheduleBusy) return;
+    if ((op === 'start' && !t) || t === undefined) { notice('检测目标不存在，请刷新后重试。', 'error'); return; }
+    if (op === 'start' && !await confirm('恢复定期检测？', `将按原设置每 ${t.intervalMinutes} 分钟检测 ${t.model}，消耗上游额度；从一个完整间隔后开始，不立即取样。${t.mode === 'protect' ? '强偏离时仍按原规则暂停模型请求。' : ''}`)) return;
+    scheduleBusy = true; renderMonitoring();
+    try {
+      await api('schedule', {...(t ? {id: t.id} : {}), action: op});
+      notice(op === 'start' ? '定期检测已恢复，从下一个间隔开始。' : '定期检测已停止；正在进行的本轮已请求取消。已有模型暂停和过滤规则保留。', 'success');
+      if (updating) await updating;
+      await refresh();
+    } catch (e) { notice(e.message, 'error'); }
+    finally { scheduleBusy = false; renderMonitoring(); renderCurrentModel(); targets(); }
+  }
+  async function cancelRound(t) {
+    await api('action', {id: t.id, action: 'cancel'});
+    notice('已请求取消本轮。' + (scheduled(t) ? '定期检测仍开启；要同时停止后续排期，请点击「停止定期检测」。' : '不会自动开始下一轮。'));
+    if (updating) await updating;
+    await refresh();
+  }
+  $('stopAllChecks').onclick = () => controlSchedule(null, 'stop');
+  $('currentSchedule').onclick = () => { const t = selectedTarget(currentSelection()); if (t) return controlSchedule(t); };
   const currentSelection = () => WorkbenchSelection({current: state?.currentModel, history: state?.history || []})
     || (manualModel ? {...manualModel, source: 'manual'} : null);
   const referenceFor = model => state.candidates.includes(model?.slice(model.indexOf('/') + 1)) ? model.slice(model.indexOf('/') + 1) : '';
@@ -17,12 +61,16 @@
     $('currentResult').textContent = saved?.running ? '检测中' : last ? statuses[last.status] : '尚无检测记录';
     $('currentResult').className = 'wb-result ' + (saved?.running ? 'running' : last?.status || '');
     $('currentResultDetail').textContent = last ? last.reason || date(last.finishedAt) : '点击检测一次，无需先浏览全部供应商。';
-    $('currentProtection').textContent = saved?.paused && saved.mode === 'protect' ? '后续请求已暂停' : saved ? modes[saved.mode] : '未开启定期检测或保护';
-    $('currentCheck').disabled = !selected || !(saved?.expected || referenceFor(selected.model)) || !!saved?.running || !!state.health;
+    $('currentProtection').textContent = saved?.paused && saved.mode === 'protect' ? (saved.allowUntil > Date.now() ? '模型请求限时放行中' : '模型后续请求已暂停') : saved?.mode === 'protect' ? '模型异常暂停保护已配置' : '不自动暂停模型请求';
+    $('currentCheck').textContent = saved?.stopping ? '正在取消…' : saved?.running ? '取消本轮' : '检测一次';
+    $('currentCheck').disabled = !connected || !selected || !(saved?.expected || referenceFor(selected.model)) || !!saved?.stopping || !!state.health;
+    $('currentSchedule').hidden = !saved || saved.mode === 'manual';
+    $('currentSchedule').textContent = scheduled(saved) ? '停止定期检测' : '恢复定期检测';
+    $('currentSchedule').disabled = scheduleBusy || !connected || !!saved?.stopping || !!state.health;
     $('currentSelectionNote').textContent = selected && !(saved?.expected || referenceFor(selected.model)) ? '此模型没有同名参考，请调整监测并明确选择参考候选。'
       : saved ? '检测设置：期望 ' + saved.expected + ' · 推理 ' + saved.effort + '。不修改 Codex 模型或供应商。' : '不修改 Codex 模型或供应商。';
     $('add').textContent = selected ? '调整监测' : '手动选择模型';
-    $('targetEmpty').hidden = state.targets.length !== 0 || !!selected;
+    $('targetEmpty').hidden = state.targets.length !== 0 || !$('targetDialog').hidden;
   }
   const statuses = {matched: '指纹与目标相符', suspect: '疑似偏离 / 样本分歧', deviated: '重复检测支持偏离',
     incomplete: '检测未完成', cancelled: '已取消', running: '检测中', difference: '强偏离，待复测'};
@@ -60,15 +108,20 @@
     const query = $('targetSearch').value.toLowerCase();
     const list = state.targets.filter(t => (t.model + ' ' + t.expected).toLowerCase().includes(query));
     $('targetCount').textContent = state.targets.length;
-    $('targetEmpty').hidden = state.targets.length !== 0;
+    $('targetEmpty').hidden = state.targets.length !== 0 || !$('targetDialog').hidden;
     $('targetList').replaceChildren(...list.map(t => {
       const card = el('article', 'target'); card.dataset.id = t.id;
       const left = el('div'); left.append(el('div', 'model', t.model), el('div', 'sub', '期望 ' + t.expected + ' · 推理 ' + t.effort));
-      const meta = el('div', 'meta'); meta.append(el('span', '', modes[t.mode] + (t.mode === 'manual' ? '' : ' · 每 ' + t.intervalMinutes + ' 分钟')),
+       const meta = el('div', 'meta'); meta.append(el('span', '', modes[t.mode] + (t.mode === 'manual' ? '' : ' · 每 ' + t.intervalMinutes + ' 分钟')),
         el('span', '', date(t.lastChecked)));
       if (t.stale && t.lastChecked) meta.append(badge('', '结果已过期'));
       if (t.routeChanged) meta.append(badge('suspect', '路由配置已变化'));
       left.append(meta);
+       const scheduleState = el('div', 'schedule-state');
+       scheduleState.append(badge(t.stopping ? 'suspect' : scheduled(t) ? 'matched' : '', t.stopping ? '本轮取消中'
+         : t.mode === 'manual' ? '仅手动检测' : scheduled(t) ? '定期检测已开启' : '定期检测已停止'));
+       if (scheduled(t)) scheduleState.append(el('small', 'muted', t.running ? '本轮结束后开始计算下个间隔' : nextCheck(t)));
+       left.append(scheduleState);
       if (t.paused) left.append(el('p', 'sub', t.pauseReason || '已暂停'));
       const right = el('div', 'right'), tags = el('div', 'actions');
       const last = recordsFor(t.id)[0];
@@ -76,17 +129,22 @@
       if (t.paused && t.mode === 'protect') tags.append(badge(t.allowUntil > Date.now() ? 'suspect' : 'paused', t.allowUntil > Date.now() ? '限时放行中' : '后续请求已暂停'));
       right.append(tags);
       const actions = el('div', 'actions');
-      actions.append(button(t.running ? '取消检测' : '检测一次', async () => {
-        if (t.running) await api('action', {id: t.id, action: 'cancel'});
+       const check = button(t.stopping ? '正在取消…' : t.running ? '取消本轮' : '检测一次', async () => {
+         if (t.running) { await cancelRound(t); return; }
         else if (await confirm('运行三样本检测？', '将向 ' + t.model + ' 发送 3 次独立请求。强偏离时再复测 3 次，整轮最多额外重试 3 次。可能消耗上游额度，不发送项目对话。')) {
           await api('check', {id: t.id}); notice('检测已开始，进度自动更新；刷新页面不会重复启动。');
         }
         await refresh();
-      }, t.running ? '' : 'primary'));
+       }, t.running ? '' : 'primary');
+       check.disabled = !!t.stopping || !connected || !!state.health; actions.append(check);
+       if (t.mode !== 'manual') {
+         const toggle = button(scheduled(t) ? '停止定期检测' : '恢复定期检测', () => controlSchedule(t));
+         toggle.disabled = scheduleBusy || !!t.stopping || !connected || !!state.health; actions.append(toggle);
+       }
       if (last) actions.append(button('详情', () => showDetail(last.id)));
       actions.append(button('设置', () => editTarget(t)));
       if (t.mode === 'protect') {
-        actions.append(button(t.paused ? '解除暂停' : '暂停', async () => {
+         actions.append(button(t.paused ? '解除模型暂停' : '暂停模型请求', async () => {
           const op = t.paused ? 'resume' : 'pause';
           if (await confirm(t.paused ? '解除此模型的暂停？' : '暂停此模型？', t.paused ? '后续请求将恢复；保留检测异常记录，不改变历史过滤。' : '此完整模型的后续请求将被拦截，其他模型不受影响。')) {
             await api('action', {id: t.id, action: op}); await refresh();
@@ -111,6 +169,7 @@
       const when = el('td', '', date(r.startedAt));
       const samples = el('td', '', r.rounds.reduce((n, x) => n + x.samples.length, 0) + ' 份');
       const act = el('td'); act.append(button('查看', () => showDetail(r.id)));
+       if (r.status === 'running') act.append(button('停止此目标检测', () => controlSchedule(state.targets.find(t => t.id === r.targetId), 'stop')));
       tr.append(name, result, when, samples, act); return tr;
     }));
     if (!list.length) { const tr = el('tr'), td = el('td', 'muted', '暂无符合条件的检测记录'); td.colSpan = 5; tr.append(td); $('historyRows').append(tr); }
@@ -133,8 +192,11 @@
       if (!loadModels) return;
     }
     updating = (async () => { try {
-      state = await api('state');
-      targets(); history(); settings(); renderCurrentModel();
+       state = await api('state'); connected = true;
+       $('workbenchVersion').textContent = 'v' + state.version;
+       $('refresh').textContent = activeView === 'filters' ? '同步供应商' : activeView === 'history' ? '刷新记录'
+         : activeView === 'settings' ? '重新检查' : '刷新状态';
+       targets(); history(); settings(); renderMonitoring(); renderCurrentModel();
       if (loadModels) models = (await api('models')).models;
       if (!currentSelection() && !$('targetDialog').dataset.offered && $('targetDialog').hidden) {
         $('targetDialog').dataset.offered = '1'; await editTarget();
@@ -146,7 +208,8 @@
           detail = await api('records/' + detailId); renderDetail();
         }
       }
-    } finally { updating = null; } })();
+     } catch (e) { connected = false; if (state) { renderMonitoring(); renderCurrentModel(); targets(); } throw e; }
+     finally { updating = null; } })();
     return updating;
   }
   function modelOptions() {
@@ -155,9 +218,18 @@
     $('model').replaceChildren(...list.map(m => { const o = el('option', '', m); o.value = m; return o; }));
     if (list.includes(selected)) $('model').value = selected;
   }
+  function syncInterval() {
+    const custom = $('interval').value === 'custom';
+    $('customIntervalField').hidden = !custom;
+    $('customInterval').disabled = !custom;
+    $('customInterval').required = custom;
+  }
+  $('interval').onchange = syncInterval;
   async function editTarget(t = null) {
     $('removeTarget')?.remove();
-    editing = t; $('targetForm').reset(); $('targetError').textContent = '';
+    editing = t; $('targetForm').reset(); syncInterval(); $('targetError').textContent = '';
+     $('scheduleSettingNote').textContent = t && t.mode !== 'manual' && !scheduled(t) ? '此目标的定期检测已停止。保存设置不会恢复排期；需要时在模型卡片点击「恢复定期检测」。已有模型暂停保留。'
+       : '定期模式在 Magpie 空闲时也会取样，不随 Codex 任务结束自动停止；任务完成后可点击顶部「停止全部检测」。停止保留模式与保护状态，恢复入口在模型卡片上。';
     $('dialogTitle').textContent = t ? '编辑监测模型' : '添加监测模型';
     $('targetDialog').hidden = false; $('model').disabled = true;
     try {
@@ -167,7 +239,10 @@
       $('expected').firstChild.value = '';
       if (t) {
         if (!models.includes(t.model)) { const o = el('option', '', t.model + '（当前列表中缺失）'); o.value = t.model; $('model').append(o); }
-        $('model').value = t.model; $('expected').value = t.expected; $('effort').value = t.effort; $('interval').value = t.intervalMinutes;
+        $('model').value = t.model; $('expected').value = t.expected; $('effort').value = t.effort;
+        const preset = [...$('interval').options].some(option => option.value === String(t.intervalMinutes));
+        $('interval').value = preset ? String(t.intervalMinutes) : 'custom';
+        $('customInterval').value = t.intervalMinutes; syncInterval();
         $('targetForm').querySelector('[name=mode][value=' + t.mode + ']').checked = true;
       } else {
         const selected = currentSelection();
@@ -185,14 +260,16 @@
       }
     } catch (e) { $('targetError').textContent = e.message; }
   }
-  function closeTarget() { $('targetDialog').hidden = true; $('removeTarget')?.remove(); }
+  function closeTarget() { $('targetDialog').hidden = true; $('removeTarget')?.remove(); if (state) renderCurrentModel(); }
   $('targetForm').onsubmit = async e => {
     e.preventDefault(); const submit = $('targetForm').querySelector('[type=submit]'); submit.disabled = true;
     try {
       const body = {model: $('model').value, expected: $('expected').value, effort: $('effort').value,
-        intervalMinutes: Number($('interval').value), mode: $('targetForm').querySelector('[name=mode]:checked').value};
+        intervalMinutes: Number($('interval').value === 'custom' ? $('customInterval').value : $('interval').value),
+        mode: $('targetForm').querySelector('[name=mode]:checked').value};
+      if (!Number.isInteger(body.intervalMinutes) || body.intervalMinutes < 1 || body.intervalMinutes > 10080) throw Error('定期间隔应为 1–10080 分钟的整数。');
       if (editing) body.id = editing.id;
-      if (body.mode !== 'manual' && (!editing || editing.mode !== body.mode || editing.intervalMinutes !== body.intervalMinutes)) {
+       if (body.mode !== 'manual' && (!editing || editing.mode === 'manual' || (scheduled(editing) && (editing.mode !== body.mode || editing.intervalMinutes !== body.intervalMinutes)))) {
         if (!await confirm('开启定期检测？', `Magpie 运行时每 ${body.intervalMinutes} 分钟对该模型取样，会消耗上游额度；${body.mode === 'protect' ? '强偏离还会暂停后续请求。' : '本模式不会自动暂停请求。'}保存后从下一个间隔开始。`)) return;
       }
       await api('targets', body); manualModel = {model: body.model, effort: body.effort};
@@ -204,6 +281,7 @@
     const body = $('detailBody'), r = detail; body.replaceChildren();
     body.append(el('div', 'detail-title', r.model), el('div', 'detail-meta', '期望 ' + r.expected + ' · ' + date(r.startedAt)),
       badge(r.status), el('p', '', r.reason || (r.phase === 'confirming' ? '首次支持偏离，正在独立复测。' : '正在逐个取样，刷新页面不会重复启动。')));
+    if (r.status === 'running') body.append(button('停止此目标检测', () => controlSchedule(state.targets.find(t => t.id === r.targetId), 'stop'), 'danger'));
     r.rounds.forEach((round, i) => {
       const box = el('section', 'round'); box.append(el('h3', '', i ? '第 2 轮 · 独立复测' : '第 1 轮 · 三样本指纹'));
       if (round.evidence) {
@@ -236,26 +314,38 @@
     const s = {service: 'magpie-model-workbench', version: state.version, bankVersion: state.bankVersion,
       health: state.health, targetCount: state.targets.length, running: state.targets.filter(t => t.running).length,
       paused: state.targets.filter(t => t.paused && t.mode === 'protect').length, budget: state.daily,
+       scheduled: state.targets.filter(scheduled).length,
       history: state.history.map(r => ({status: r.status, requests: r.requests, startedAt: r.startedAt, finishedAt: r.finishedAt}))};
     download('workbench-diagnostics.json', s);
   };
-  document.querySelectorAll('.nav').forEach(b => b.onclick = () => {
-    document.querySelectorAll('.view').forEach(v => { v.hidden = v.id !== b.dataset.view; });
-    document.querySelectorAll('.nav').forEach(n => n.classList.toggle('active', n === b));
-    if (b.dataset.view === 'filters' && !filterBase) loadFilters().catch(e => notice(e.message, 'error'));
-  });
+  function showView(view) {
+    activeView = pageMeta[view] ? view : 'targets';
+    const meta = pageMeta[activeView];
+    $('pageTitle').textContent = meta[0]; $('pageSubtitle').textContent = meta[1];
+    document.querySelectorAll('.view').forEach(v => { v.hidden = v.id !== activeView; });
+    document.querySelectorAll('.nav').forEach(n => n.classList.toggle('active', n.dataset.view === activeView));
+    if (state) {
+      renderMonitoring();
+      $('refresh').textContent = activeView === 'filters' ? '同步供应商' : activeView === 'history' ? '刷新记录'
+        : activeView === 'settings' ? '重新检查' : '刷新状态';
+    }
+    if (activeView === 'filters' && !filterBase) loadFilters().catch(e => notice(e.message, 'error'));
+  }
+  document.querySelectorAll('.nav').forEach(b => b.onclick = () => showView(b.dataset.view));
   function paintFilters() {
     const dirty = filterBase ? H.differences(filterBase, filterDraft) : [];
     $('filterSave').disabled = filterBusy || !dirty.length;
     $('filterDiscard').disabled = filterBusy || !dirty.length;
     $('filterRefresh').disabled = filterBusy;
-    $('filterRefresh').textContent = filterBusy ? '正在处理…' : '刷新供应商';
+    $('filterEnabledOnly').disabled = !filterBase;
+    $('filterEnabledOnly').setAttribute('aria-pressed', String(filterEnabledOnly));
+    $('filterRefresh').textContent = filterBusy ? '正在处理…' : '合并供应商列表';
     $('filterDirty').textContent = !filterBase ? '尚未读取规则' : dirty.length ? new Set(dirty.map(x => x.id)).size + ' 个供应商待保存' : '没有未保存的修改';
     if (!filterBase) return;
-    const rows = H.rows(filterDraft, filterProviders), query = $('filterSearch').value.toLowerCase();
-    const list = rows.filter(r => (r.name + ' ' + r.id + ' ' + r.target).toLowerCase().includes(query)
-      && ($('filterScope').value === 'all' || ($('filterScope').value === 'on' ? r.on : r.configured)));
-    $('filterCount').textContent = `${list.length} / ${rows.length} 个供应商 · ${rows.filter(r => r.on).length} 个开启`;
+    const {rows: list, total, enabled, narrowed} = H.view(filterBase, filterDraft, filterProviders,
+      {enabledOnly: filterEnabledOnly, query: $('filterSearch').value});
+    $('filterEnabledOnly').textContent = `只看已开启 · ${enabled}`;
+    $('filterCount').textContent = `共 ${total} 个供应商 · 已开启 ${enabled} 个${narrowed ? ` · 找到 ${list.length} 个` : ''}`;
     $('filterRows').replaceChildren(...list.map(row => {
       const card = el('div', 'filter-row'), identity = el('div', 'filter-identity');
       identity.append(el('strong', '', row.name), el('small', 'mono', row.id));
@@ -267,12 +357,16 @@
         checkbox.setAttribute('aria-label', row.name + '：' + caption);
         checkbox.checked = field === 'historyFilter' ? row.on : row.include;
         checkbox.disabled = filterBusy || !filterEnabled || (field !== 'historyFilter' && !row.on);
-        checkbox.onchange = () => { filterDraft = H.change(filterDraft, row.target, field, checkbox.checked); paintFilters(); };
+        checkbox.onchange = () => {
+          filterDraft = H.change(filterDraft, row.target, field, checkbox.checked); paintFilters();
+          [...$('filterRows').querySelectorAll('input')].find(input => input.dataset.id === row.id && input.dataset.field === field)?.focus();
+        };
         label.append(checkbox, el('span', '', caption + ' · ' + (checkbox.checked ? '开' : '关'))); card.append(label);
       }
       return card;
     }));
-    $('filterEmpty').textContent = !filterEnabled ? '工作台插件当前已停用，请先在 Magpie 中启用。' : list.length ? '' : '没有符合条件的供应商。';
+    $('filterEmpty').textContent = !filterEnabled ? '工作台插件当前已停用，请先在 Magpie 中启用。' : list.length ? ''
+      : '没有符合条件的供应商。' + (filterEnabledOnly ? '取消筛选以搜索全部供应商。' : '');
   }
   async function loadFilters() {
     if (filterBusy) return;
@@ -286,7 +380,8 @@
       if (!filterBase || !H.differences(filterBase, filterDraft).length) filterBase = filterDraft = H.validate(data.options);
     } finally { filterBusy = false; paintFilters(); }
   }
-  $('filterSearch').oninput = $('filterScope').onchange = paintFilters;
+  $('filterSearch').oninput = paintFilters;
+  $('filterEnabledOnly').onclick = () => { filterEnabledOnly = !filterEnabledOnly; paintFilters(); };
   $('filterDiscard').onclick = async () => { filterDraft = filterBase; await loadFilters(); notice('已撤销修改并读取最新规则。'); };
   $('filterRefresh').onclick = async () => {
     try { await loadFilters(); notice('供应商规则已刷新，未保存的修改会保留。', 'success'); } catch (e) { notice(e.message, 'error'); }
@@ -313,6 +408,7 @@
     $('currentCheck').disabled = true;
     try {
       const existing = selectedTarget(selected);
+       if (existing?.running) { await cancelRound(existing); return; }
       if (!await confirm('运行三样本检测？', '将检测 ' + selected.model + '，期望 ' + (existing?.expected || referenceFor(selected.model))
         + '，推理 ' + (existing?.effort || selected.effort || 'default') + '。通常 3 次请求，强偏离时共 6 次，整轮最多额外重试 3 次；按上游计费，不发送项目上下文。')) return;
       if (!existing) {

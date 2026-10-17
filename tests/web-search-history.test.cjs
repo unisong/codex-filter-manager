@@ -1,9 +1,13 @@
 'use strict';
-const {test} = require('node:test');
+const {test, before} = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
 const {filterResponsesRequest, makeProxy} = require('../src/proxy.cjs');
-const {onRequest} = require('../magpie-plugin/history.middleware.js');
+let onRequest;
+before(async () => {
+  const {combineMiddleware} = await import('../magpie-workbench/server/middleware.mjs');
+  ({onRequest} = await import('data:text/javascript;base64,' + Buffer.from(combineMiddleware()).toString('base64')));
+});
 
 // Shapes match a Codex text-compaction history; all data here is synthetic.
 const body = {model: 'demo/gpt-6.1-sol', reasoning: {effort: 'xhigh'},

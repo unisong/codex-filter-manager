@@ -33,7 +33,7 @@ test('diagnostic write failures do not throw and are reported', t => {
   const d = createDiagnostics({runtime: obstruction});
   assert.doesNotThrow(() => d.record('request-received')); assert.equal(d.snapshot().writeFailures, 1);
 });
-test('reports distinguish no requests, passthrough, clean input and native unobserved state', async t => {
+test('reports distinguish no requests, passthrough, clean input and retired service mode', async t => {
   const runtime = fixture(t), d = createDiagnostics({runtime});
   const management = {state: () => ({providers: [{rule: {historyFilter: true}}]})};
   const options = {service: {running: true, backend: 'ccswitch', state: 'filtering'}, management, recorder: d};
@@ -43,7 +43,7 @@ test('reports distinguish no requests, passthrough, clean input and native unobs
   d.record('filtered', {requestId, removed: 0});
   assert.ok((await buildReport(options)).checks.some(c => c.code === 'clean-history'));
   const native = await buildReport({...options, service: {running: true, backend: 'magpie', state: 'magpie-plugin'}});
-  assert.ok(native.checks.some(c => c.code === 'native-runtime-unobserved')); assert.ok(!native.checks.some(c => c.code === 'no-requests'));
+  assert.ok(native.checks.some(c => c.code === 'use-magpie-workbench'));
   const unknown = await buildReport({...options, requestObservationAvailable: false});
   assert.ok(unknown.checks.some(c => c.code === 'live-diagnostics-unavailable'));
   assert.ok(!unknown.checks.some(c => ['no-requests', 'clean-history'].includes(c.code)));

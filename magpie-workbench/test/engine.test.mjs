@@ -36,6 +36,45 @@ test('actual reference IDs must be selected, aliases are never guessed', async (
   assert.throws(() => e.update({...input, model: 'group/default', mode: 'protect'}), /路由组/);
   await e.close(); fs.rmSync(f.directory, {recursive: true});
 });
+test('preset and custom intervals persist, schedule from save time, and reject invalid values without changes', async () => {
+  const f = fixture(); let now = 1000000;
+  let e = createEngine({...f, now: () => now, gateway: () => ({url: 'http://127.0.0.1:1'}),
+    probe: () => assert.fail('saving an interval sent a model request')});
+  try {
+    for (const intervalMinutes of [5, 20, 17, 1, 10080]) {
+      now += 1000;
+      const t = e.update({...input, mode: 'observe', intervalMinutes});
+      assert.equal(t.nextAt, now + intervalMinutes * 60000);
+      await e.close();
+      e = createEngine({...f, now: () => now, gateway: () => ({url: 'http://127.0.0.1:1'}),
+        probe: () => assert.fail('reloading a saved interval sent a model request')});
+      assert.equal(e.snapshot().health, '');
+      assert.equal(e.snapshot().targets[0].intervalMinutes, intervalMinutes);
+      assert.equal(e.snapshot().targets[0].nextAt, now + intervalMinutes * 60000);
+    }
+    const before = fs.readFileSync(path.join(f.directory, 'state.json'), 'utf8');
+    for (const intervalMinutes of [0, -1, 10081, 1.5, '20', null, NaN, Infinity]) {
+      assert.throws(() => e.update({...input, intervalMinutes}), /定期间隔/);
+      assert.equal(fs.readFileSync(path.join(f.directory, 'state.json'), 'utf8'), before);
+    }
+  } finally { await e.close(); fs.rmSync(f.directory, {recursive: true}); }
+});
+test('custom interval waits until due and a long-running check never overlaps itself', async () => {
+  const f = fixture(); let now = 1000000, calls = 0;
+  const e = createEngine({...f, now: () => now, tickMs: 5, gateway: () => ({url: 'http://127.0.0.1:1'}),
+    probe: ({signal}) => { calls++; return new Promise((resolve, reject) => signal.addEventListener('abort', () => reject(Error('cancelled')), {once: true})); }});
+  try {
+    const t = e.update({...input, mode: 'observe', intervalMinutes: 17});
+    now = t.nextAt - 1;
+    await new Promise(resolve => setTimeout(resolve, 20)); assert.equal(calls, 0);
+    now++;
+    for (let i = 0; i < 100 && !calls; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    assert.equal(calls, 1);
+    now += 18 * 60000;
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(calls, 1); assert.equal(e.snapshot().history.length, 1);
+  } finally { await e.close(); fs.rmSync(f.directory, {recursive: true}); }
+});
 test('whole check shares at most three retries; history keeps one record and attempts', async () => {
   const f = fixture(); let calls = 0;
   const e = createEngine({...f, gateway: () => ({url: 'http://127.0.0.1:1'}), wait: async () => {},

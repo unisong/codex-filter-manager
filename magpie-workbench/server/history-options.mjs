@@ -36,7 +36,12 @@ export function createHistoryOptions({magpieDirectory = path.join(os.homedir(), 
     let names = [];
     try {
       const data = JSON.parse(fs.readFileSync(path.join(magpieDirectory, 'providers.json'), 'utf8'));
-      names = (Array.isArray(data.providers) ? data.providers : []).filter(p => p && typeof p.id === 'string')
+      // Magpie keeps deleted providers as hidden tombstones in providers.json.
+      // They are neither selectable nor valid filter targets, so do not surface
+      // them in the current-provider list. A saved rule, if any, is still added
+      // by HistorySettings.rows as an explicitly missing rule.
+      names = (Array.isArray(data.providers) ? data.providers : [])
+        .filter(p => p && p.hidden !== true && typeof p.id === 'string')
         .map(p => ({id: p.id, name: typeof p.name === 'string' ? p.name : p.id}));
     } catch {}
     return {options: publicOptions(entry.options || {}), providers: names, enabled: !entry.off};

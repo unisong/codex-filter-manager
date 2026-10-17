@@ -1,15 +1,15 @@
 'use strict';
-const {test} = require('node:test');
+const {test, before} = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
 const http = require('node:http');
-const {onRequest} = require('../magpie-plugin/history.middleware.js');
 const {filterResponsesRequest} = require('../src/proxy.cjs');
-const {createMagpiePluginStore} = require('../src/magpie-plugin-store.cjs');
-const {createManagement} = require('../src/management.cjs');
-const {createMagpieAdapter} = require('../src/magpie.cjs');
 const {makeProxy} = require('../src/proxy.cjs');
+
+let onRequest;
+before(async () => {
+  const {combineMiddleware} = await import('../magpie-workbench/server/middleware.mjs');
+  ({onRequest} = await import('data:text/javascript;base64,' + Buffer.from(combineMiddleware()).toString('base64')));
+});
 
 const rule = {historyFilter: true, preserveEncryptedInclude: true, stripResponsesLiteHeader: false};
 function context(overrides = {}) {
@@ -88,37 +88,4 @@ test('Azure mock rejects old IDs and accepts the plugin-filtered request from a 
   await new Promise(resolve => proxy.listen(0, '127.0.0.1', resolve));
   t.after(() => {proxy.closeAllConnections(); return new Promise(resolve => proxy.close(resolve));});
   assert.equal((await fetch('http://127.0.0.1:' + proxy.address().port + '/v1/responses', {method: 'POST', body: JSON.stringify(body)})).status, 200);
-});
-
-test('plugin store and management share options, preserve other plugins and never enable unsupported auto protection', t => {
-  const root = fs.realpathSync(process.env.PI_SCRATCH_DIR), directory = fs.mkdtempSync(path.join(root, 'plugin-'));
-  t.after(() => {assert.equal(path.dirname(fs.realpathSync(directory)), root); fs.rmSync(directory, {recursive: true, force: true});});
-  const configPath = path.join(directory, 'config.toml'), filename = path.join(directory, 'plugins.json');
-  fs.writeFileSync(configPath, 'model="one/gpt-6.1-sol"\nmodel_provider="magpie"\n[model_providers.magpie]\nbase_url="http://127.0.0.1:3425/v1"');
-  fs.writeFileSync(path.join(directory, 'providers.json'), JSON.stringify({providers: [{id: 'one', name: 'One', responses: 'https://one.invalid/v1', was: ['old-one']}]}));
-  const untouched = {spec: 'another-plugin', off: true, options: {retain: 'LOCAL_SECRET'}};
-  fs.writeFileSync(filename, JSON.stringify({plugins: [untouched], config: {preserved: true}}));
-  const store = createMagpiePluginStore({directory}); store.install({'magpie:one': rule, 'ccs-old': rule});
-  store.install(); assert.equal(store.rules().data.providers['magpie:one'].historyFilter, true);
-  assert.equal(store.rules().data.providers['ccs-old'], undefined);
-  const adapter = createMagpieAdapter({directory, configPath, getUpstream: () => 'http://127.0.0.1:3425'});
-  const manager = createManagement({runtime: directory, adapter, pluginStore: store, guard: {snapshot: () => ({providers: {}})}});
-  const state = manager.state(); assert.equal(state.integration.automaticProtection, false);
-  manager.handle('PUT', '/providers/magpie:one/rule', {revision: state.revision, rule: {...rule, historyFilter: false}});
-  assert.equal(store.rules().data.providers['magpie:one'].historyFilter, false);
-  assert.throws(() => manager.handle('PUT', '/providers/magpie:one/rule', {revision: state.revision, rule}), {code: 'rules_changed'});
-  assert.throws(() => manager.handle('PUT', '/guard/providers/magpie:one', {enabled: true}), {code: 'plugin_guard_unsupported'});
-  assert.throws(() => manager.handle('PUT', '/providers/magpie:one/rule', {revision: manager.state().revision,
-    rule: {...rule, stripResponsesLiteHeader: true}}), {code: 'plugin_header_unsupported'});
-  assert.doesNotMatch(JSON.stringify(manager.state()), /LOCAL_SECRET/);
-  assert.deepEqual(JSON.parse(fs.readFileSync(filename, 'utf8')).plugins[0], untouched);
-  assert.deepEqual(JSON.parse(fs.readFileSync(filename, 'utf8')).config, {preserved: true});
-  const before = store.rules();
-  const other = JSON.parse(fs.readFileSync(filename, 'utf8')); other.plugins[0].off = false; fs.writeFileSync(filename, JSON.stringify(other));
-  assert.throws(() => store.update(before.data.providers, before.revision), /changed/);
-  other.plugins.find(p => p.spec === path.resolve(__dirname, '..', 'magpie-plugin')).off = true;
-  fs.writeFileSync(filename, JSON.stringify(other));
-  assert.equal(manager.state().integration.enabled, false);
-  assert.equal(manager.state().currentPolicy.filter, false);
-  assert.equal(manager.policy(body).filter, false);
 });

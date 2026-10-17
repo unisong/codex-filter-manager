@@ -1,116 +1,139 @@
-# Codex Filter Manager · Codex 过滤管理
+# Codex 过滤管理
 
-为 **Codex + CC Switch / Magpie** 提供按供应商设置的历史兼容过滤，缓解切换中转站后旧会话的密文验证、跨资源历史 ID 等错误；另提供可选的 ModelTrace 模型指纹检测。
+为 **Codex + CC Switch / Magpie** 提供按供应商控制的历史兼容过滤，缓解切换中转站后旧会话出现的加密内容验证失败、跨 Azure 资源 ID、`web_search_call` 缺少 reasoning 等问题；可选模型监测会在项目响应进入会话前检查指纹是否明显偏离。
 
-**Windows 10 / 11 · 无需管理员权限 · 无需手动安装 Node.js · MIT**
+**Windows 10 / 11 · 无需管理员权限 · 首次启动自动准备 Node.js · MIT**
 
-当前版本：**v1.0.7 / 服务 v33**。[下载最新版本](https://github.com/unisong/codex-filter-manager/releases/latest) · [更新说明](docs/RELEASE-v1.0.7.md) · [反馈问题](https://github.com/unisong/codex-filter-manager/issues)
+当前版本：**v1.0.8 / 服务 v34**。[下载最新版](https://github.com/unisong/codex-filter-manager/releases/latest) · [更新记录](docs/CHANGELOG.md) · [问题反馈](https://github.com/unisong/codex-filter-manager/issues)
 
-## 选择使用方式
+## 两种版本
 
-| 使用环境 | 建议入口 | 模型检测与保护 |
+| 版本 | 适用环境 | 包含内容 |
 | --- | --- | --- |
-| CC Switch | 本仓库的一键启动服务 | 手动检测、请求前检测、异常锁定及响应验证 |
-| Magpie，希望在其内管理全功能插件 | 本仓库的 [Magpie 本地工作台](magpie-workbench/README.md) | 可选手动检测、定期观测与异常暂停 |
-| Magpie，继续使用本仓库管理页 | 本服务附带的历史过滤钩子 | 手动检测与记录；不支持自动切断或 Lite 标头修改 |
-| Magpie，只需要社区纯过滤插件 | [magpie-codex-history-filter](https://github.com/unisong/magpie-codex-history-filter) | 无 UI、工作台、检测或保护，通过宿主 Options 设置 |
+| **全功能版**（本仓库） | CC Switch 或 Magpie | 历史过滤、可视化工作台、模型监测、记录与诊断 |
+| **社区纯过滤插件** | Magpie 社区插件市场 | 仅历史过滤中间件，无工作台 UI 或模型检测 |
 
-Magpie 过滤入口请选择一种，避免同时启用重复过滤。本服务默认根据当前 Codex 网关配置自动识别 CC Switch / Magpie；完整 Magpie 工作台暂需单独加载。**本仓库的附带钩子与完整工作台功能不同**，配置方法见 [Magpie 适配说明](docs/MAGPIE.md)。
+全功能版在两种网关下的接入方式不同：
 
-全功能和 UI 后续统一在本仓库开发；社区插件仓库只同步纯过滤子集，两条版本独立递增。详见 [维护与发布关系](docs/MAINTENANCE.md)。
+- **CC Switch**：本仓库的代理服务接管 Codex 路由，界面开关直接对应供应商规则。
+- **Magpie**：加载本仓库的 [`magpie-workbench/`](magpie-workbench/README.md) 插件，Codex 继续直连 Magpie，本工具不修改 `base_url`。
 
-## 点击即用
+只需过滤的 Magpie 用户可以在 **Plugins → Discover → Gateway middleware** 搜索 **Codex History Filter** 安装社区版，或执行：
 
-先让 Codex 能通过 CC Switch 或 Magpie 正常调用模型。CC Switch 需开启「本地代理」与「Codex 接管」。
-
-1. 下载 [Release ZIP](https://github.com/unisong/codex-filter-manager/releases/latest)，完整解压到当前用户可写、准备长期使用的目录。
-2. 双击 **`Start.bat`**。启动器会查找兼容的 Node.js，必要时从官方源下载便携版并校验；无需 `npm install`。
-3. 浏览器自动打开 [本机管理页](http://127.0.0.1:18181/__codex_filter__/ui)，并创建桌面「Codex 过滤管理」快捷方式。
-4. CC Switch 首次接入后，完全退出并重新打开 Codex。Magpie 模式保持原网关地址不变。
-5. 在「历史过滤」为需要兼容的供应商打开开关。**新安装没有预置供应商规则，过滤和模型保护均默认关闭。**
-
-```text
-CC Switch：Codex → 过滤服务 :18181 → CC Switch → 供应商
-Magpie：   Codex → Magpie :3425（历史过滤钩子）→ 请求指定的供应商
+```sh
+magpie plugin add @magpie-community/middleware-codex-history
 ```
 
-供应商切换仍在原网关操作；Magpie 不同会话按各自的 `供应商/模型` 前缀独立过滤。
+社区版源码位于 [unisong/magpie-codex-history-filter](https://github.com/unisong/magpie-codex-history-filter)。完整工作台与社区纯过滤插件选择一种加载，避免重复处理请求。
 
-| 日常操作 | 入口 |
-| --- | --- |
-| 启动并打开页面 | `Start.bat` 或桌面快捷方式；电脑重启后也用此入口 |
-| 查看状态 / 导出诊断 | `Status.bat` / `Diagnose.bat` |
-| 停止服务 | `Stop.bat`；CC Switch 随后重启 Codex；Magpie 钩子需在其插件页单独停用 |
-| 更新 | 停止旧服务，备份 `.runtime/`，覆盖公开文件后启动；保留自己的运行数据 |
-| 搬迁或卸载 | 先停止；CC Switch 确认地址恢复，Magpie 移除本地插件后再移动或删除目录 |
+## CC Switch 快速开始
 
-关闭浏览器不会停止服务。本工具不注册开机自启动。
+先让 Codex 能通过 CC Switch 正常调用模型，并开启其路由接入。旧版界面通常写作 **「本地代理」+「Codex 接管」**，新版界面在 Codex 页选择 **「路由」** 后点击 **「开始路由」**。只停留在路由标签、或只启动代理但没有让 Codex 使用，都不算完成接入。无需开启自动故障转移。
 
-## 界面预览
+1. 从 [Releases](https://github.com/unisong/codex-filter-manager/releases/latest) 下载 ZIP，完整解压到长期使用的可写目录。
+2. 双击 **`Start.bat`**。首次启动会校验并下载官方 Node.js，不需要安装 npm 依赖。
+3. 浏览器打开本机管理页，桌面同时创建 **「Codex 过滤管理」** 快捷方式。
+4. 完全退出并重新打开 Codex，让客户端重新读取接入地址。
+5. 在「历史过滤」页为需要的供应商开启规则。**新安装不预置供应商，过滤与模型保护默认关闭。**
 
-截图使用虚构供应商与演示记录。页面右上角单个月亮 / 太阳图标切换明暗主题；四个分区为历史过滤、模型监测、检测记录、设置与诊断。
+```text
+Codex → 本机过滤服务 → CC Switch → 当前供应商
+```
 
-![历史过滤与供应商设置](docs/images/providers.png)
+日常入口：`Start.bat` 启动并打开页面；`Status.bat` 查看状态；`Diagnose.bat` 导出脱敏诊断；`Stop.bat` 停止并恢复配置。关闭浏览器不会停止后台服务，工具默认不注册开机启动。
+
+## Magpie 快速开始
+
+将本仓库解压到固定目录，然后在 Magpie 中加载：
+
+```sh
+magpie plugin add /path/to/codex-filter-manager/magpie-workbench
+```
+
+只使用历史过滤时，不必打开工作台，直接在 Magpie 侧边栏的 **Codex Workbench · 历史过滤** 原生页面设置；在 Magpie 扩展／插件页面确认插件已启用、无调用错误。需要模型监测时，再运行 `magpie-workbench/Open.bat` 打开本地工作台。
+
+详细安装、升级、数据位置与边界见 [Magpie 使用方式](docs/MAGPIE.md)。
+
+## 界面
+
+界面按 **当前状态 → 主操作 → 配置列表 → 技术说明** 排列。左上角显示运行状态、版本和项目链接；右上角保留单图标明暗切换和当前页面刷新。
+
+![历史过滤](docs/images/providers.png)
 
 <details>
-<summary>查看模型监测、检测记录与深色主题</summary>
+<summary>查看模型监测、检测记录和供应商设置</summary>
 
 ![模型监测](docs/images/protection.png)
 ![同页调整监测](docs/images/monitor-settings.png)
 ![检测记录](docs/images/history.png)
-![设置与诊断](docs/images/settings.png)
+![供应商设置](docs/images/provider-settings.png)
 ![深色主题](docs/images/protection-dark.png)
 
 </details>
 
-## 如何选择开关
+## 历史过滤
 
-兼容选项按供应商保存，与模型保护独立；三个兼容开关本身不会发起模型检测。
+过滤按供应商独立保存，历史过滤、Lite 协议兼容和模型保护互不联动。新供应商默认关闭，兼容开关本身不会发起模型请求。
 
-v1.0.7 修复历史 `web_search_call` 缺少关联 `reasoning` 的错误：开启历史过滤后，将旧搜索调用转为文字记录，保留已记录的查询与后续结论，避免重放依赖原资源的搜索条目。适用于普通对话和携带完整明文历史的压缩总结请求。[错误说明](docs/TROUBLESHOOTING.md#web_search_call-缺少-reasoning)
-
-| 兼容开关 | 作用 | 推荐 |
+| 选项 | 作用 | 建议 |
 | --- | --- | --- |
-| 过滤历史加密内容 | 清理旧 reasoning、明确密文块和可移植历史的服务器 ID，保留正文与工具配对 | 旧会话出现密文或跨资源 ID 错误时开启 |
-| 保留新响应的加密内容请求 | 保留客户端原有的 `reasoning.encrypted_content` 请求，不会恢复已清理的旧密文 | 开启历史过滤时通常保持勾选 |
-| Lite 协议兼容 | 移除 Responses/Lite 扩展标头，不修改模型或推理强度；仅适用于 CC Switch | 仅遇到对应协议错误时开启 |
+| 过滤历史加密内容 | 移除旧 reasoning、明确标记的密文和可移植条目中的服务器 ID，保留正文与工具配对 | 切换供应商后旧会话报密文或跨资源 ID 错误时开启 |
+| 保留新响应的加密内容请求 | 保留客户端原有的 `reasoning.encrypted_content` 请求，不会恢复已经清理的旧密文 | 开启历史过滤时通常保持开启 |
+| Lite 协议兼容 | 移除 Responses/Lite 扩展标头，不改模型与推理强度 | 仅在上游明确提示 Lite 与 `reasoning.context` 冲突时开启 |
 
-### 推荐组合
+推荐从 **前两项开启、第三项关闭** 开始。上游明确拒绝新响应密文请求时，再尝试关闭第二项。三个选项的完整原理、流程与截图见 [兼容规则说明](docs/COMPATIBILITY.md)。
 
-供应商使用正常时保持默认关闭；处理旧会话兼容问题时，先用 **「前两项勾选、第三项关闭」**。上游明确拒绝新响应的加密内容请求时，再尝试取消第二项。[三个按钮的完整原理、边界与设置截图](docs/COMPATIBILITY.md)
+服务 v33 起，历史过滤也会把旧 `web_search_call` 转换为带说明的普通助手文字，保留已记录的查询、动作和来源，避免旧搜索条目必须依赖已经被移除的 reasoning。该转换不会重新搜索，也不会补造结果。
 
-**模型保护建议先手动检测，再按需开启。** 自动保护检查每条实际请求的模型与推理强度；默认通过缓存有效 10 分钟，到期后的下一次请求重新检测，空闲时不主动取样。页面优先显示最近实际请求，其次显示检测记录，无记录时在本页手动选择。
+## 模型监测
 
-检测采用 [ModelTrace](https://github.com/xqy2006/ModelTrace) 的出题器、评分器和参考库，通过自己的供应商取样，在本机评分。通常一轮 3 个请求，强差异时追加复核，**可能计费并增加等待时间**。保护开启时，未能验证的请求也会被拦截；红色模型差异与黄色网络/样本错误分别显示。[评分、重试、锁定与费用说明](MODEL-GUARD.md)
+模型监测使用 [ModelTrace](https://github.com/xqy2006/ModelTrace) 的出题器、评分逻辑和参考库，在本机通过当前供应商取样并评分。检测请求不携带项目对话，也不会改用 ModelTrace 的云端检测接口。
 
-## 使用边界与隐私
+- **手动检测**：点击后才产生 3 个样本；强差异时可能追加复核，最多 6 个。
+- **自动保护**（CC Switch）：请求响应完整验证后才交付；结果可按有效期复用，默认 10 分钟。
+- **定期观测 / 异常暂停**（Magpie 工作台）：按 5、10、20、30、60 分钟或自定义间隔取样；任务结束时可从顶部一键停止全部轮询。
 
-- 过滤不解密密文、不改写会话文件；会丢弃部分内部推理状态。无法恢复的服务器引用、加密压缩历史及过滤中的 `/responses/compact` 会明确拒绝，需整理明文摘要后新开会话。
-- 独立代理仅支持 Responses HTTP/SSE，不支持 WebSocket。CC Switch 的复杂配置、自动故障转移或其他接入路径可能影响识别和保护。
-- 模型指纹可能误报或漏报，不是身份认证或能力保证。CC Switch 开启保护后先缓存完整响应再交付，失去逐 token 显示；不能撤回工具操作或回滚文件。
-- Magpie 钩子加载失败、异常或超时时，宿主可能放行原请求；请在 Magpie 插件页核对运行状态。
-- 管理端口仅供本机使用，不要映射到公网。CC Switch 模式接管并恢复 Codex 的目标地址；Magpie 模式不改写该地址。供应商配置只读，无自动遥测上传。
-- 不要公开 `.runtime/`、Magpie 配置、Key 或会话文件；只分享检查过的脱敏报告。[安全与数据说明](SECURITY.md)
+一轮通常产生 3 次计费请求，网络故障最多额外重试 3 次。匹配分是有限候选模型之间的相对证据，不是身份概率，也不能证明代码质量。网络错误、上游 403 和样本无效不会被标成“确认降智”。详细评分、重试、锁定和费用边界见 [模型保护说明](docs/MODEL-GUARD.md)。
 
-## 诊断与反馈
+## 数据与边界
 
-在「设置与诊断」检查状态、复现问题后重新检查并导出 JSON；页面打不开时双击 **`Diagnose.bat`**。将检查过的报告、版本、发生时间和操作步骤附到 [Issue](https://github.com/unisong/codex-filter-manager/issues/new?template=bug_report.yml)。诊断不调用模型、不自动上传。
+- 过滤不解密密文、不改写 Codex 会话文件，只移除可安全丢弃的内部状态；无法安全迁移的服务器引用或加密压缩历史会明确拒绝。
+- CC Switch 模式仅支持 Responses HTTP/SSE；自动故障转移、复杂路由组或其他接入方式可能让管理页无法准确识别当前供应商。
+- CC Switch 开启模型保护后，响应会等待完整校验后再显示，不能逐字流出，也不能撤回已经执行的工具操作。
+- Magpie 插件加载失败、超时或被宿主跳过时，请求可能继续放行；运行状态应以 Magpie 插件页为准。
+- 管理端口只监听本机，不上传遥测。不要公开 `.runtime/`、Magpie 配置、API Key、会话文件或未检查的日志。
 
-Magpie 请求不经过本管理端口，计数为零不能单独认定过滤失效，应查看 Magpie 插件页。[常见错误与恢复步骤](docs/TROUBLESHOOTING.md)
+完整隐私说明见 [SECURITY.md](SECURITY.md)；常见错误与恢复步骤见 [排障文档](docs/TROUBLESHOOTING.md)。
 
-## 开发与命令行
+## 诊断
 
-源码运行需要 Node.js 24+，无需安装运行依赖：
+在「设置与诊断」点击检查，可预览并下载只含运行元数据的 JSON；页面打不开时运行 `Diagnose.bat`。报告不包含对话、密钥、供应商地址或个人路径，也不会自动上传。反馈问题时请附上产品版本、服务版本、发生时间和操作步骤。
+
+## 开发
+
+需要 Node.js 24+，核心运行无第三方 npm 依赖：
 
 ```powershell
-node filter.cjs start   # stop / status / diagnose
-npm test               # 临时配置与本机模拟上游，不调用真实模型
+npm test
+node magpie-workbench/tools/build-middleware.mjs
+node --test magpie-workbench/test/*.test.mjs
+powershell -File tests/launcher/launcher-check.ps1
 ```
 
-服务代码在 `src/`，页面在 `web/`，测试在 `tests/`，开发工具在 `scripts/`；默认运行数据仍在安装目录的 `.runtime/`。[目录职责、自定义路径与开发验证](CONTRIBUTING.md)
+目录职责、命令行参数、浏览器测试和提交要求见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
+```text
+filter.cjs               稳定 CLI 入口
+src/                     CC Switch 服务、过滤、模型保护与诊断
+web/                     CC Switch 管理页面与共享静态资源
+magpie-workbench/        完整 Magpie 插件、原生设置页与本机工作台
+tests/                   自动测试、浏览器检查和固定测试数据
+scripts/                 启动实现、打包、截图与手动检查工具
+docs/                    使用、兼容、维护、排障与更新记录
+```
 
 ## 许可与致谢
 
-本项目采用 [MIT](LICENSE)。感谢 [ModelTrace](https://github.com/xqy2006/ModelTrace) 提供模型行为指纹算法、中文出题器与参考库，原许可和固定来源见 [第三方说明](THIRD_PARTY_NOTICES.md)。感谢配套项目 [CC Switch](https://github.com/farion1231/cc-switch) 与 [Magpie](https://github.com/yetone/magpie)；本工具为独立社区项目。
+本项目采用 [MIT](LICENSE)。感谢 [ModelTrace](https://github.com/xqy2006/ModelTrace) 提供模型行为指纹算法、中文出题器与参考库；固定版本、许可和校验值见 [第三方说明](THIRD_PARTY_NOTICES.md)。感谢 [CC Switch](https://github.com/farion1231/cc-switch) 与 [Magpie](https://github.com/yetone/magpie) 提供本地网关生态。
 
 友情链接：[LINUX DO](https://linux.do/)

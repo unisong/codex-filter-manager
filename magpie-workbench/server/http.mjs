@@ -86,6 +86,7 @@ export async function createService({directory, gateFile, magpieDirectory, packa
           if (!(await gateway.models()).includes(body.model)) throw fail('所选模型不在当前 Magpie 模型列表中，请刷新后重选。');
           engine.update(body);
         } else if (pathname === '/api/check') engine.start(body.id);
+         else if (pathname === '/api/schedule') engine.schedule(body.id, body.action);
         else if (pathname === '/api/action') engine.action(body.id, body.action);
         else if (pathname === '/api/budget') engine.budget(body.limit);
         else if (pathname === '/api/connection') gateway.save(body);

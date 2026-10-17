@@ -1,6 +1,6 @@
 import {portableWebSearch} from './portable-web-search.mjs';
 
-// These input forms carry their own contents; the server-issued item id is optional.
+// Portable input forms carry their own contents; the server-issued item id is optional.
 // Other tool/resource types may require their IDs, so don't recursively strip IDs.
 const PORTABLE_ITEMS = new Set(['message', 'agent_message', 'function_call', 'function_call_output',
   'custom_tool_call', 'custom_tool_call_output', 'tool_search_call', 'tool_search_output', 'additional_tools']);

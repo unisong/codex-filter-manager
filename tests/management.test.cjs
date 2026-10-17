@@ -75,7 +75,7 @@ test('dashboard API requires local host, same origin and control token, preserve
   for (const [file, mime] of [['workbench-theme.css', 'text/css'], ['current-selection.js', 'text/javascript']]) {
     const asset=await call('/'+file); assert.equal(asset.status,200);
     assert.ok(asset.headers.get('content-type').startsWith(mime));
-    assert.equal(await asset.text(),fs.readFileSync(path.join(__dirname,'..','assets',file),'utf8'));
+    assert.equal(await asset.text(),fs.readFileSync(path.join(__dirname,'..','web','assets',file),'utf8'));
     assert.equal((await call('/'+file,{headers:{'sec-fetch-site':'cross-site'}})).status,403);
   }
   assert.equal((await call('/favicon.svg',{headers:{origin:'https://evil.test'}})).status,403);

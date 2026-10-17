@@ -6,12 +6,40 @@ const os = require('node:os');
 const {localOrigin} = require('./proxy.cjs');
 
 function atomicWrite(filename, text) {
+  const pause = attempt => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Math.min(20 + attempt * 15, 120));
+  const transient = error => ['EPERM', 'EBUSY', 'EACCES', 'ENOENT'].includes(error?.code);
   fs.mkdirSync(path.dirname(filename), {recursive: true});
   const temp = filename + '.filter-' + process.pid + '-' + Math.random().toString(16).slice(2) + '.tmp';
+  let failure = null;
   try {
     fs.writeFileSync(temp, text, {flag: 'wx', mode: 0o600});
-    fs.renameSync(temp, filename);
-  } finally { if (fs.existsSync(temp)) fs.unlinkSync(temp); }
+    // Windows virus scanners and backup agents can briefly share-lock the
+    // destination. Retry only those transient sharing errors; real disk or
+    // permission failures still surface immediately.
+    for (let attempt = 0; ; attempt++) {
+      try { fs.renameSync(temp, filename); break; }
+      catch (error) {
+        if (!transient(error) || attempt >= 9) throw error;
+        pause(attempt);
+      }
+    }
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    if (fs.existsSync(temp)) {
+      for (let attempt = 0; ; attempt++) {
+        try { fs.unlinkSync(temp); break; }
+        catch (error) {
+          if (!transient(error) || attempt >= 9) {
+            if (!failure) throw error;
+            break;
+          }
+          pause(attempt);
+        }
+      }
+    }
+  }
 }
 
 function unquote(value) {
@@ -171,10 +199,9 @@ class ConfigRouter {
     this.getUpstream = getUpstream;
     this.log = log;
     this.waitingState = 'waiting-for-' + backend;
-    this.readOnly = backend === 'magpie';
+    if (backend !== 'ccswitch') throw new Error('ConfigRouter only supports CC Switch; load magpie-workbench/ in Magpie.');
     this.state = this.waitingState;
     this.routes = new Map();
-    if (this.readOnly) return;
     if (fs.existsSync(backupPath)) {
       const backup = JSON.parse(fs.readFileSync(backupPath, 'utf8'));
       if (backup.configPath !== this.configPath || backup.filterOrigin !== this.filterOrigin || backup.version !== 1) {
@@ -184,7 +211,6 @@ class ConfigRouter {
     }
   }
   save() {
-    if (this.readOnly) throw new Error('Magpie middleware mode never writes Codex routing.');
     atomicWrite(this.backupPath, JSON.stringify({version: 1, configPath: this.configPath,
       filterOrigin: this.filterOrigin, routes: [...this.routes]}, null, 2));
   }
@@ -196,10 +222,6 @@ class ConfigRouter {
     const text = fs.readFileSync(this.configPath, 'utf8');
     const entry = providerBase(text);
     if (!entry) { this.changeState('waiting-for-supported-provider'); return; }
-    if (this.readOnly) {
-      this.changeState(sameEndpoint(entry.url, this.getUpstream()) ? 'magpie-plugin' : 'waiting-for-magpie-direct');
-      return;
-    }
     if (sameEndpoint(entry.url, this.filterOrigin)) {
       if (this.routes.get(entry.provider)?.filteredUrl !== entry.url) {
         throw new Error('Filter URL found without its original-address backup; refusing to guess.');
@@ -224,7 +246,6 @@ class ConfigRouter {
     this.log('config-attached', {provider: entry.provider});
   }
   restore() {
-    if (this.readOnly) return;
     if (!fs.existsSync(this.configPath)) return;
     let text = fs.readFileSync(this.configPath, 'utf8');
     const original = text;

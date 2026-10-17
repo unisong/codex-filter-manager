@@ -139,28 +139,23 @@ async function buildReport({service = {}, management, recorder, gatewayReachable
   catch { check('settings-unreadable', 'error', '无法读取供应商或过滤规则。请检查文件格式与权限；报告不包含原文件。'); }
   const log = recorder?.snapshot() || {counters: {}, events: []};
   report.diagnostics = log;
-  const native = report.service.backend === 'magpie';
-  if (!report.service.running) check('service-unavailable', 'error', '管理服务未运行或无响应。先启动服务；若仅使用 Magpie 市场插件，请改用插件诊断工具。');
+  if (!report.service.running) check('service-unavailable', 'error', '管理服务未运行或无响应。CC Switch 用户先启动服务；Magpie 用户请使用工作台自带的诊断入口。');
   else check('service-ready', 'info', '管理服务可响应。此项不代表模型请求已经接入或完成过滤。');
   if (service.state === 'config-error') check('config-error', 'error', '配置接入失败。请检查配置格式和恢复信息；不要删除恢复备份。');
-  if (configMatches === false || (service.running && !['filtering', 'magpie-plugin', 'config-error'].includes(service.state))) {
-    check('config-not-attached', 'warning', native ? '配置未确认直连 Magpie。检查实际使用的配置、profile 和启动参数。' : '配置未确认接入过滤端口。检查实际配置；地址更改后可能需要完全重启 Codex。');
+  if (report.service.backend === 'magpie') check('use-magpie-workbench', 'warning', 'Magpie 不再使用独立管理服务，请加载 magpie-workbench 完整插件并使用其诊断入口。');
+  if (configMatches === false || (service.running && !['filtering', 'config-error'].includes(service.state))) {
+    check('config-not-attached', 'warning', '配置未确认接入过滤端口。检查实际配置；地址更改后可能需要完全重启 Codex。');
   }
-  if (gatewayReachable === false) check('gateway-unreachable', 'error', '本地网关端口无法连接。请启动 CC Switch 或 Magpie；此项不是供应商模型质量结论。');
+  if (gatewayReachable === false) check('gateway-unreachable', 'error', '本地网关端口无法连接。请启动 CC Switch；此项不是供应商模型质量结论。');
   report.gatewayReachable = typeof gatewayReachable === 'boolean' ? gatewayReachable : null;
   if (state) {
     report.rules = {total: state.providers.length, enabled: state.providers.filter(p => p.rule?.historyFilter).length,
-      autoFailover: state.autoFailover === true, pluginInstalled: state.integration?.installed === true,
-      pluginEnabled: state.integration?.enabled === true};
-    if (native) {
-      if (!state.integration?.enabled) check('plugin-disabled', 'error', 'Magpie 本地过滤插件未安装或未启用。');
-      check('native-runtime-unobserved', 'warning', '模型请求直接经过 Magpie，不经过本管理端口。此处无请求计数不能说明插件未生效；请查看 Magpie 插件页的实时调用和错误。');
-    }
+      autoFailover: state.autoFailover === true};
     if (state.autoFailover) check('auto-failover', 'warning', 'CC Switch 自动故障转移已开启，本工具不能固定识别上游，历史过滤暂不执行。');
     if (!report.rules.enabled) check('no-enabled-rules', 'warning', '所有供应商历史过滤均关闭，当前直通属于预期行为。');
   }
-  if (!native && service.running && !requestObservationAvailable) check('live-diagnostics-unavailable', 'warning', '当前服务未提供实时诊断，运行计数不可用。请升级服务或检查管理接口；文件事件可能来自上次运行。');
-  if (!native && service.running && requestObservationAvailable) {
+  if (service.running && !requestObservationAvailable) check('live-diagnostics-unavailable', 'warning', '当前服务未提供实时诊断，运行计数不可用。请升级服务或检查管理接口；文件事件可能来自上次运行。');
+  if (service.running && requestObservationAvailable) {
     if (!log.lastRequestAt) check('no-requests', 'warning', '本次启动后尚未收到 Responses 请求。发一条消息后重新检查；可能使用旧连接配置、其他入口或尚未发送请求，不能据此断定忘记重启。');
     else {
       report.lastRequestAt = log.lastRequestAt;

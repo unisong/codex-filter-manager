@@ -1,6 +1,6 @@
 'use strict';
 // Offline fixtures derived from the public reference histograms, not suppliers.
-const bank = require('../vendor/modeltrace/unified_bank.json');
+const bank = require('../../vendor/modeltrace/unified_bank.json');
 function numbers(model, index = 0) {
   const entry = bank.models.find(item => item.id === model);
   if (!entry) throw new Error('Unknown fixture model');
@@ -21,7 +21,7 @@ function outputs(model, start = 0) {
 }
 module.exports = {bank, numbers, outputs};
 if (require.main === module) {
-  const {analyzeSamples} = require('../src/guard-evidence.cjs');
+  const {analyzeSamples} = require('../../src/guard-evidence.cjs');
   const expected = 'gpt-6-astra';
   const pass = outputs(expected), different = outputs('gpt-6-luna');
   console.log(JSON.stringify({

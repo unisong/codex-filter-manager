@@ -41,6 +41,17 @@ test('workbench authenticates one-time opens, enforces same-origin writes and hi
     assert.equal((await api('/api/targets', {model: listed.models[0], expected: 'gpt-6-astra', effort: 'default', mode: 'manual', intervalMinutes: 30}, headers)).status, 200);
     const next = await (await api('/api/state', undefined, {cookie})).json();
     assert.equal(next.targets.length, 1); assert.equal(probes, 0); assert.ok(modelReads >= 2);
+    const schedule = {id: next.targets[0].id, action: 'stop'};
+    assert.equal((await api('/api/schedule', schedule, {Origin: service.origin})).status, 401);
+    assert.equal((await api('/api/schedule', schedule, {cookie, Origin: 'https://evil.example'})).status, 403);
+    assert.equal((await api('/api/schedule', {...schedule, id: 'missing'}, headers)).status, 404);
+    assert.equal((await api('/api/schedule', {...schedule, action: 'unknown'}, headers)).status, 400);
+    assert.equal((await api('/api/schedule', schedule, headers)).status, 200);
+    assert.equal((await api('/api/schedule', {action: 'stop'}, headers)).status, 200);
+    assert.equal((await api('/api/schedule', {...schedule, action: 'start'}, headers)).status, 400, 'manual targets cannot resume periodic scheduling');
+    const after = await (await api('/api/state', undefined, {cookie})).json();
+    assert.equal(after.targets[0].scheduleEnabled, false); assert.equal(after.targets[0].nextAt, 0);
+    assert.equal(probes, 0);
     const asset = await api('/app.js');
     assert.match(asset.headers.get('content-security-policy'), /frame-ancestors 'none'/);
     assert.equal((await api('/server/http.mjs')).status, 404);

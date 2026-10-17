@@ -64,11 +64,16 @@ test('console edits only its filter switches, preserves other plugins/private op
   const config = {plugins: [{spec: 'other-plugin', options: {secret: 'PRIVATE_OTHER'}},
     {spec: packageRoot, options: {...options, gatewayKey: 'PRIVATE_OWN', custom: {keep: true}}}], prefer: {keep: 'other-plugin'}};
   fs.writeFileSync(file, JSON.stringify(config));
-  fs.writeFileSync(path.join(root, 'providers.json'), JSON.stringify({providers: [{id: 'demo', name: 'Demo', key: 'PRIVATE_PROVIDER'}]}));
+  fs.writeFileSync(path.join(root, 'providers.json'), JSON.stringify({providers: [
+    {id: 'demo', name: 'Demo', key: 'PRIVATE_PROVIDER'},
+    {id: 'deleted-provider', name: '', hidden: true, key: 'PRIVATE_HIDDEN'}]}));
   const store = createHistoryOptions({magpieDirectory: root, packageRoot});
   const before = store.get();
   assert.ok(!JSON.stringify(before).includes('PRIVATE'));
   assert.deepEqual(before.providers, [{id: 'demo', name: 'Demo'}]);
+  assert.deepEqual(globalThis.HistorySettings.rows(before.options, [
+    {id: 'demo', name: 'Demo'}, {id: 'deleted-provider', name: '', hidden: true}])
+    .map(row => row.id), ['demo'], 'hidden provider tombstones are not filter targets');
   const draft = structuredClone(before.options); draft.providers['magpie:demo'].historyFilter = false;
   store.save({base: before.options, draft});
   const saved = JSON.parse(fs.readFileSync(file));

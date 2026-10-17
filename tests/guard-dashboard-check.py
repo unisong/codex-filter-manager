@@ -28,7 +28,7 @@ state = {
               "configured": {"model": "gpt-6-astra", "effort": "high"}, "failureCooldownSeconds": 60,
               "current": {"providerId": "gugu", "model": "gpt-6-astra", "effort": "high", "available": True, "key": "fixture-key", "modelSource": "config", "routeRevision": "route-0"}},
 }
-fixture_evidence = json.loads(subprocess.check_output(["node", "scripts/guard-fixtures.cjs"], cwd=root, text=True))
+fixture_evidence = json.loads(subprocess.check_output(["node", "tests/fixtures/guard-fixtures.cjs"], cwd=root, text=True))
 calls = []
 server_token = "offline-ui-test"
 ui_loads = 0
@@ -51,7 +51,7 @@ def route_request(route):
         route.fulfill(status=200, content_type="text/html; charset=utf-8", body=html.replace("__FILTER_TOKEN_JSON__", json.dumps(server_token)))
         return
     if path in ("/workbench-theme.css", "/current-selection.js", "/favicon.svg"):
-        asset = root / "assets" / path[1:]
+        asset = root / "web" / "assets" / path[1:]
         route.fulfill(status=200, content_type={".css": "text/css", ".js": "text/javascript", ".svg": "image/svg+xml"}[asset.suffix], body=asset.read_bytes())
         return
     if not path.startswith("/api/"):
@@ -95,7 +95,7 @@ with sync_playwright() as p:
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.route("**/*", route_request)
     page.goto("http://127.0.0.1:19999/__codex_filter__/ui")
-    expect(page.locator("#versionBadge")).to_have_text("v" + str(filter_version))
+    expect(page.locator("#versionBadge")).to_contain_text("服务 v" + str(filter_version))
     expect(page.locator("#providersView")).to_be_visible()
     expect(page.locator("#protectionView")).to_be_hidden()
     expect(page.locator("#historyView")).to_be_hidden()
@@ -171,11 +171,11 @@ with sync_playwright() as p:
     page.locator("#viewProviders").click()
     assert state["guard"]["providers"]["gugu"] == {"enabled": True, "ttlSeconds": 600}
     assert not state["providers"][0]["rule"]["historyFilter"]
-    page.get_by_role("button", name="已启用", exact=True).click()
-    expect(page.locator("#providers tr")).to_have_count(1)
-    page.get_by_role("button", name="自定义", exact=True).click()
-    expect(page.locator("#providers tr")).to_have_count(1)
-    page.get_by_role("button", name="全部", exact=True).click()
+    page.locator("#enabledOnly").click()
+    # Model protection alone must not qualify as enabled history filtering.
+    expect(page.locator("#providers tr")).to_have_count(0)
+    page.locator("#enabledOnly").click()
+    expect(page.locator("#providers tr")).to_have_count(len(state["providers"]))
     select_view(page, "protection")
     if not page.locator("#guardSelectionEditor").evaluate("e => e.open"):
         page.locator("#guardAdjust").click()
@@ -566,7 +566,7 @@ with sync_playwright() as p:
     with page.expect_response(lambda response: response.url.endswith('/ui') and response.request.is_navigation_request(), timeout=10000):
         page.locator("#refresh").click()
     page.wait_for_load_state('domcontentloaded')
-    expect(page.locator("#versionBadge")).to_have_text("v" + str(filter_version))
+    expect(page.locator("#versionBadge")).to_contain_text("服务 v" + str(filter_version))
     expect(page.locator("#error")).to_be_hidden(timeout=4000)
     assert ui_loads == before_loads + 1
     page.wait_for_timeout(200)
@@ -637,7 +637,7 @@ for(const [id,name,current] of [['fixture','真实后端离线夹具',1],['secon
 db.close();
 fs.writeFileSync(configPath,'model="gpt-6-astra"\nmodel_reasoning_effort="high"\nmodel_provider="custom"\n[model_providers.custom]\nbase_url="http://127.0.0.1:1/v1"\n');
 fs.writeFileSync(path.join(runtime,'auth.json'),JSON.stringify({OPENAI_API_KEY:'local-test-placeholder'}));
-const {numbers}=require('./scripts/guard-fixtures.cjs');let sampleIndex=0;const modeFile=path.join(runtime,'fixture-mode.txt');
+const {numbers}=require('./tests/fixtures/guard-fixtures.cjs');let sampleIndex=0;const modeFile=path.join(runtime,'fixture-mode.txt');
 fs.writeFileSync(modeFile,'pass');
 const guard=createGuardService({runtime,databasePath,configPath,getUpstream:()=> 'http://127.0.0.1:1',
  probe:async()=>{await new Promise(r=>setTimeout(r,100));const mismatch=fs.readFileSync(modeFile,'utf8')==='block';return {text:numbers(mismatch?'gpt-6-luna':'gpt-6-astra',sampleIndex++).join(','),model:'gpt-6-astra'};}});
@@ -661,7 +661,7 @@ with tempfile.TemporaryDirectory(prefix="codex-guard-ui-backend-") as scratch:
             errors = []
             page.on("pageerror", lambda e: errors.append(str(e)))
             page.goto(url)
-            expect(page.locator("#versionBadge")).to_have_text("v" + str(filter_version))
+            expect(page.locator("#versionBadge")).to_contain_text("服务 v" + str(filter_version))
             expect(page.locator("#guardEnabled")).to_have_attribute("aria-checked", "false")
             select_view(page, "protection")
             expect(page.locator("#guardTest")).to_be_enabled()

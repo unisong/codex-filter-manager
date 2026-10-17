@@ -9,10 +9,12 @@ param(
     [string]$Runtime,
     [string]$CcDb,
     [string]$Upstream,
-    [ValidateSet('auto', 'ccswitch', 'magpie')][string]$Backend = 'auto',
-    [string]$MagpieDir
+    [ValidateSet('auto', 'ccswitch')][string]$Backend = 'auto'
 )
 $ErrorActionPreference = 'Stop'
+# This launcher lives in scripts/windows/. Resolve the installation root from
+# its own path so .bat entry points, shortcuts and direct runs all agree.
+$ProjectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 
 function Test-FilterNode {
     param([string]$Path)
@@ -28,7 +30,7 @@ function Get-FilterNode {
     $version = '24.21.0'
     $architecture = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64' -or $env:PROCESSOR_ARCHITEW6432 -eq 'ARM64') { 'arm64' } else { 'x64' }
     $distribution = "node-v$version-win-$architecture"
-    $toolsDirectory = Join-Path $PSScriptRoot '.tools'
+    $toolsDirectory = Join-Path $ProjectRoot '.tools'
     $runtimeDirectory = Join-Path $toolsDirectory $distribution
     $privateNode = Join-Path $runtimeDirectory 'node.exe'
     if (Test-FilterNode $privateNode) { return $privateNode }
@@ -102,9 +104,9 @@ function New-FilterDesktopShortcut {
         $shortcut = $shell.CreateShortcut($shortcutPath)
         $shortcut.TargetPath = Join-Path $env:SystemRoot 'System32\wscript.exe'
         $shortcut.Arguments = '"' + (Join-Path $PSScriptRoot 'open-dashboard.vbs') + '"'
-        $shortcut.WorkingDirectory = $PSScriptRoot
+        $shortcut.WorkingDirectory = $ProjectRoot
         $shortcut.Description = 'Start Codex Filter Manager and open its local dashboard'
-        $icon = Join-Path $PSScriptRoot 'assets\app.ico'
+        $icon = Join-Path $ProjectRoot 'web\assets\app.ico'
         if (Test-Path -LiteralPath $icon -PathType Leaf) { $shortcut.IconLocation = $icon }
         $shortcut.Save()
     } finally {
@@ -115,13 +117,12 @@ function New-FilterDesktopShortcut {
 
 function Invoke-FilterCommand {
     param([string]$Node, [string]$Operation)
-    $filterArguments = @((Join-Path $PSScriptRoot 'filter.cjs'), $Operation, '--port', $Port.ToString())
+    $filterArguments = @((Join-Path $ProjectRoot 'filter.cjs'), $Operation, '--port', $Port.ToString())
     if ($Config) { $filterArguments += @('--config', $Config) }
     if ($Runtime) { $filterArguments += @('--runtime', $Runtime) }
     if ($CcDb) { $filterArguments += @('--cc-db', $CcDb) }
     if ($Upstream) { $filterArguments += @('--upstream', $Upstream) }
     $filterArguments += @('--backend', $Backend)
-    if ($MagpieDir) { $filterArguments += @('--magpie-dir', $MagpieDir) }
     $result = & $Node @filterArguments
     if ($LASTEXITCODE -ne 0) { throw ('Filter ' + $Operation + ' failed. See the message above and .runtime/filter.log. If the requested port is occupied, stop the other service first.') }
     return ($result -join "`n") | ConvertFrom-Json
@@ -137,7 +138,7 @@ function Test-FilterProcessInThisFolder {
         $process = Get-CimInstance Win32_Process -Filter ('ProcessId=' + [int]$state.pid)
         if (-not $process -or $process.CommandLine -notmatch '(?:^|\s)serve(?:\s|$)') { return $false }
         foreach ($entry in @('filter.cjs', 'src\filter.cjs')) {
-            $script = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot $entry))
+            $script = [IO.Path]::GetFullPath((Join-Path $ProjectRoot $entry))
             if ($process.CommandLine -match ('(?:^|["\s])' + [regex]::Escape($script) + '(?:["\s]|$)')) { return $true }
         }
         return $false
@@ -149,9 +150,9 @@ if ($MyInvocation.InvocationName -eq '.') { return }
 $mutex = $null
 $ownsMutex = $false
 try {
-    $runtimePath = if ($Runtime) { [IO.Path]::GetFullPath($Runtime) } else { Join-Path $PSScriptRoot '.runtime' }
+    $runtimePath = if ($Runtime) { [IO.Path]::GetFullPath($Runtime) } else { Join-Path $ProjectRoot '.runtime' }
     $hasher = [Security.Cryptography.SHA256]::Create()
-    try { $mutexKey = [BitConverter]::ToString($hasher.ComputeHash([Text.Encoding]::UTF8.GetBytes($PSScriptRoot.ToLowerInvariant()))).Replace('-', '') }
+    try { $mutexKey = [BitConverter]::ToString($hasher.ComputeHash([Text.Encoding]::UTF8.GetBytes($ProjectRoot.ToLowerInvariant()))).Replace('-', '') }
     finally { $hasher.Dispose() }
     $mutex = New-Object System.Threading.Mutex($false, ('Local\CodexFilterLauncher-' + $mutexKey))
     try { $ownsMutex = $mutex.WaitOne(240000) } catch [Threading.AbandonedMutexException] { $ownsMutex = $true }
@@ -169,7 +170,7 @@ try {
         return
     }
     if ($Action -ne 'Start') { $service | ConvertTo-Json -Depth 10; return }
-    $versionMatch = [regex]::Match([IO.File]::ReadAllText((Join-Path $PSScriptRoot 'src\proxy.cjs')), 'const FILTER_VERSION\s*=\s*(\d+)')
+    $versionMatch = [regex]::Match([IO.File]::ReadAllText((Join-Path $ProjectRoot 'src\proxy.cjs')), 'const FILTER_VERSION\s*=\s*(\d+)')
     if (-not $versionMatch.Success) { throw 'Cannot read the source version; please extract a complete release ZIP.' }
     $sourceVersion = [int]$versionMatch.Groups[1].Value
     if ($service.running -and $service.filterVersion -ne $sourceVersion) {

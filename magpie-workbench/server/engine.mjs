@@ -11,6 +11,7 @@ const {analyzeSamples} = require('./evidence.cjs');
 const {probe: transportProbe} = require('./transport.cjs');
 const bank = JSON.parse(fs.readFileSync(new URL('../vendor/modeltrace/unified_bank.json', import.meta.url)));
 const cleanError = e => e?.code?.startsWith('guard_') || e?.status ? e.message : '检测服务遇到异常，请查看诊断状态后重试。';
+const validInterval = value => Number.isInteger(value) && value >= 1 && value <= 10080;
 export const fail = (message, status = 400) => Object.assign(new Error(message), {status});
 export function atomic(file, value) {
   fs.mkdirSync(path.dirname(file), {recursive: true});
@@ -47,9 +48,12 @@ export function createEngine({directory, gateFile, gateway, routeVersion = () =>
         || saved.dailyLimit < 3 || saved.dailyLimit > 1000 || saved.targets.some(t =>
           !t || typeof t.id !== 'string' || typeof t.model !== 'string' || !t.model.includes('/')
           || !['manual', 'observe', 'protect'].includes(t.mode) || !models.includes(t.expected)
-          || ![10,30,60,120].includes(t.intervalMinutes) || typeof t.paused !== 'boolean')
+           || !validInterval(t.intervalMinutes) || typeof t.paused !== 'boolean'
+           || (t.scheduleEnabled !== undefined && typeof t.scheduleEnabled !== 'boolean'))
         || saved.history.some(r => !r || !Array.isArray(r.rounds) || r.rounds.some(x => !Array.isArray(x.samples)))) throw Error('state');
     state = saved;
+    // Older targets used their mode alone to opt into scheduling.
+    for (const t of state.targets) t.scheduleEnabled = t.mode !== 'manual' && t.scheduleEnabled !== false;
     for (const record of state.history) if (record.status === 'running') {
       record.status = 'incomplete'; record.reason = '后台曾重启，本轮没有完成；未自动追加模型请求。'; record.finishedAt = now();
     }
@@ -89,10 +93,11 @@ export function createEngine({directory, gateFile, gateway, routeVersion = () =>
   const used = () => state.daily[day()] || 0;
   const target = id => state.targets.find(t => t.id === id);
   const healthy = () => { if (closed || health) throw fail(health || '后台已关闭。', 503); };
+  const scheduled = t => t.mode !== 'manual' && t.scheduleEnabled;
   function snapshot() {
     return {version: productVersion, health, revision: state.revision, bankVersion: manifest.commit,
       candidates: models, daily: {used: used(), limit: state.dailyLimit, day: day()},
-      targets: state.targets.map(t => ({...t, running: jobs.has(t.id),
+       targets: state.targets.map(t => ({...t, running: jobs.has(t.id), stopping: !!jobs.get(t.id)?.controller.signal.aborted,
         stale: !t.lastChecked || now() - t.lastChecked > t.intervalMinutes * 60000,
         routeChanged: !!t.lastRoute && t.lastRoute !== routeVersion()})),
       history: state.history.map(({rounds, ...r}) => ({...r, rounds: rounds.map(({samples, ...x}) =>
@@ -105,8 +110,8 @@ export function createEngine({directory, gateFile, gateway, routeVersion = () =>
         || input.model.startsWith('workbench-probe/')) throw fail('请选择完整的「供应商/模型」。');
     if (!models.includes(input.expected)) throw fail('请选择参考库中的期望模型。');
     if (!['manual', 'observe', 'protect'].includes(input.mode)
-        || !['default', 'minimal', 'low', 'medium', 'high', 'xhigh'].includes(input.effort)
-        || ![10, 30, 60, 120].includes(input.intervalMinutes)) throw fail('检测设置无效。');
+        || !['default', 'minimal', 'low', 'medium', 'high', 'xhigh'].includes(input.effort)) throw fail('检测设置无效。');
+    if (!validInterval(input.intervalMinutes)) throw fail('定期间隔应为 1–10080 分钟的整数。');
     if (input.mode === 'protect' && /^(group|auto|router)\//i.test(input.model)) throw fail('路由组仅支持观测，请选择具体供应商模型后再开启暂停保护。');
     let t = input.id ? target(input.id) : state.targets.find(t => t.model === input.model && t.effort === input.effort);
     if (input.id && !t) throw fail('检测目标不存在。', 404);
@@ -118,8 +123,9 @@ export function createEngine({directory, gateFile, gateway, routeVersion = () =>
     }
     const changed = t.model && [t.model, t.expected, t.effort].join('|') !== [input.model, input.expected, input.effort].join('|');
     if (changed) { t.lastChecked = 0; t.lastResult = null; t.lastRoute = ''; }
+    const scheduleEnabled = input.mode !== 'manual' && (t.mode === undefined || t.mode === 'manual' || t.scheduleEnabled !== false);
     Object.assign(t, {model: input.model, expected: input.expected, mode: input.mode, effort: input.effort,
-      intervalMinutes: input.intervalMinutes, nextAt: now() + input.intervalMinutes * 60000});
+       intervalMinutes: input.intervalMinutes, scheduleEnabled, nextAt: scheduleEnabled ? now() + input.intervalMinutes * 60000 : 0});
     persistGate(); return t;
   }
   function action(id, op) {
@@ -133,6 +139,24 @@ export function createEngine({directory, gateFile, gateway, routeVersion = () =>
       state.targets = state.targets.filter(x => x.id !== id);
     } else throw fail('未知操作。');
     persistGate();
+  }
+  function schedule(id, op) {
+    healthy();
+    if (!['stop', 'start'].includes(op) || (id !== undefined && (typeof id !== 'string' || !id)) || (op === 'start' && id === undefined)) throw fail('定期检测操作无效。');
+    const targets = id === undefined ? state.targets : [target(id)];
+    if (!targets[0] && id !== undefined) throw fail('检测目标不存在。', 404);
+    if (op === 'start') {
+      const t = targets[0];
+      if (t.mode === 'manual') throw fail('请先为此目标设置定期观测或异常暂停模式。');
+      if (jobs.get(id)?.controller.signal.aborted) throw fail('本轮正在取消，请等待结束后恢复定期检测。', 409);
+      if (!scheduled(t)) { t.scheduleEnabled = true; t.nextAt = now() + t.intervalMinutes * 60000; save(); }
+    } else {
+      // Persist the schedule stop before aborting. It never releases model
+      // holds or rewrites the history middleware; a late job cannot rearm it.
+      for (const t of targets) { t.scheduleEnabled = false; t.nextAt = 0; }
+      try { save(); }
+      finally { for (const t of targets) jobs.get(t.id)?.controller.abort(); }
+    }
   }
   async function sample(t, challenge, job, record, retryBudget) {
     let retries = 0;
@@ -211,13 +235,15 @@ export function createEngine({directory, gateFile, gateway, routeVersion = () =>
     } finally {
       record.finishedAt = now(); record.retries = retries.used;
       record.requests = record.rounds.reduce((n, r) => n + r.samples.reduce((v, s) => v + s.attempts.length, 0), 0);
-      t.nextAt = now() + t.intervalMinutes * 60000;
+       t.nextAt = scheduled(t) ? now() + t.intervalMinutes * 60000 : 0;
       jobs.delete(t.id);
       try { persistGate(); } catch {}
     }
   }
   function start(id, source = 'manual') {
     healthy(); const t = target(id); if (!t) throw fail('检测目标不存在。', 404);
+    if (source === 'scheduled' && !scheduled(t)) throw fail('此目标的定期检测已停止。', 409);
+    if (jobs.get(id)?.controller.signal.aborted) throw fail('本轮正在取消，请等待结束后重新检测。', 409);
     if (jobs.has(id)) return jobs.get(id).id;
     if (jobs.size >= 2) throw fail('已有两项检测运行中，请稍后重试。', 409);
     if (used() + 3 > state.dailyLimit) throw fail('今日剩余预算不足以开始三样本检测。', 409);
@@ -231,12 +257,12 @@ export function createEngine({directory, gateFile, gateway, routeVersion = () =>
   }
   const timer = setInterval(() => {
     if (closed || health) return;
-    for (const t of state.targets) if (t.mode !== 'manual' && !jobs.has(t.id) && now() >= t.nextAt) {
+     for (const t of state.targets) if (scheduled(t) && !jobs.has(t.id) && now() >= t.nextAt) {
       try { start(t.id, 'scheduled'); }
       catch { t.nextAt = now() + t.intervalMinutes * 60000; }
     }
   }, tickMs); timer.unref?.();
-  return {snapshot, update, action, start,
+   return {snapshot, update, action, schedule, start,
     record: id => state.history.find(r => r.id === id),
     budget(limit) { healthy(); if (!Number.isInteger(limit) || limit < 3 || limit > 1000) throw fail('每日预算应为 3–1000 个请求。'); state.dailyLimit = limit; save(); },
     async close() { closed = true; clearInterval(timer); for (const j of jobs.values()) j.controller.abort(); await Promise.allSettled([...jobs.values()].map(j => j.promise)); },

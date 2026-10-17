@@ -1,6 +1,6 @@
 # 历史兼容设置
 
-[返回项目首页](../README.md) · [模型保护](../MODEL-GUARD.md) · [排障](TROUBLESHOOTING.md)
+[返回项目首页](../README.md) · [模型保护](MODEL-GUARD.md) · [排障](TROUBLESHOOTING.md)
 
 在「历史过滤」中找到对应供应商，点击 **「配置」**，可设置以下三个兼容开关。它们按供应商分别保存，点击「保存设置」后对后续请求生效；与 ModelTrace 的「模型保护」独立。
 

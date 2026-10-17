@@ -1,13 +1,14 @@
 ﻿[CmdletBinding()]
 param()
 $ErrorActionPreference = 'Stop'
-$repository = Split-Path $PSScriptRoot -Parent
+$repository = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $scratch = Join-Path ([IO.Path]::GetTempPath()) ('codex-filter-launcher-' + [Guid]::NewGuid().ToString('N') + ' 中文 空格')
 New-Item -ItemType Directory -Path $scratch | Out-Null
-foreach ($name in @('start.ps1', 'open-dashboard.ps1', 'open-dashboard.vbs', 'ccswitch-filter.ps1', 'filter.cjs', 'package.json')) {
+Copy-Item -LiteralPath (Join-Path $repository 'scripts\windows') -Destination (Join-Path $scratch 'scripts\windows') -Recurse
+foreach ($name in @('filter.cjs', 'package.json')) {
     Copy-Item -LiteralPath (Join-Path $repository $name) -Destination (Join-Path $scratch $name)
 }
-foreach ($name in @('src', 'web', 'vendor', 'magpie-plugin', 'assets')) {
+foreach ($name in @('src', 'web', 'vendor')) {
     Copy-Item -LiteralPath (Join-Path $repository $name) -Destination (Join-Path $scratch $name) -Recurse
 }
 $powershell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
@@ -24,7 +25,7 @@ function Read-SharedText {
 
 function Invoke-LauncherFixture {
     param([string]$Operation = 'Start', [switch]$AllowFailure)
-    $args = @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $scratch 'start.ps1'),
+    $args = @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $scratch 'scripts\windows\start.ps1'),
         '-Action', $Operation, '-CheckOnly', '-NoShortcut', '-Console', '-Port', $fixturePort,
         '-Config', $fixtureConfig, '-Runtime', $fixtureRuntime, '-CcDb', $fixtureDatabase, '-Upstream', $fixtureUpstream)
     # Redirect to files, not a PowerShell pipeline: detached descendants can inherit the pipeline pipe.
@@ -42,7 +43,7 @@ function Invoke-LauncherFixture {
 
 try {
     Set-Location -LiteralPath $scratch
-    $entry = Join-Path $scratch 'start.ps1'
+    $entry = Join-Path $scratch 'scripts\windows\start.ps1'
     . $entry
     $installedNode = Get-FilterNode -NoDownload
     $checks.Add('compatible installed Node discovery')
@@ -63,8 +64,9 @@ try {
         if (-not $refusedMissing -or $script:downloadCalls -ne 0) { throw 'NoDownload unexpectedly fetched a runtime.' }
         $checks.Add('Stop/Status missing runtime does not download')
         $refusedChecksum = $false
-        try { Get-FilterNode | Out-Null } catch { $refusedChecksum = $_.Exception.Message -match 'checksum mismatch' }
-        if (-not $refusedChecksum -or $script:downloadCalls -ne 1) { throw 'An invalid archive was not rejected.' }
+        $checksumError = ''
+        try { Get-FilterNode | Out-Null } catch { $checksumError = $_.Exception.Message; $refusedChecksum = $checksumError -match 'checksum mismatch' }
+        if (-not $refusedChecksum -or $script:downloadCalls -ne 1) { throw ('An invalid archive was not rejected. Download calls: ' + $script:downloadCalls + '. ' + $checksumError) }
         if (Get-ChildItem -LiteralPath (Join-Path $scratch '.tools') -Filter '.install-*') { throw 'Failed download staging was not cleaned.' }
         $checks.Add('bad checksum rejected before execution and staging cleaned')
     } finally {

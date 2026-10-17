@@ -36,6 +36,8 @@ const workbenchRoot = path.join(root, 'magpie-workbench');
 const workbench = JSON.parse(fs.readFileSync(path.join(workbenchRoot, 'package.json'), 'utf8'));
 const product = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 if (workbench.version !== product.version) issues.push('magpie-workbench/package.json: version must follow the main product');
+const nativePageVersion = /<span class="version">v([^<]+)<\/span>/.exec(fs.readFileSync(path.join(workbenchRoot, 'history/page/index.html'), 'utf8'))?.[1];
+if (nativePageVersion !== product.version) issues.push('magpie-workbench/history/page/index.html: displayed version must follow the main product');
 const workbenchProvenance = JSON.parse(fs.readFileSync(path.join(workbenchRoot, 'vendor/modeltrace/PROVENANCE.json'), 'utf8'));
 for (const [name, info] of Object.entries(workbenchProvenance.files)) {
   const file = 'magpie-workbench/vendor/modeltrace/' + name;
@@ -47,8 +49,18 @@ const historyProvenance = JSON.parse(fs.readFileSync(path.join(workbenchRoot, 'h
 for (const file of ['magpie-workbench/codex-history.middleware.js', 'magpie-workbench/history/codex-history.middleware.js']) {
   if (createHash('sha256').update(fs.readFileSync(path.join(root, file))).digest('hex') !== historyProvenance.sha256) issues.push(file + ': historical baseline mismatch');
 }
-for (const required of ['filter.cjs', 'src/filter.cjs', 'src/config.cjs', 'src/proxy.cjs', 'src/management.cjs', 'src/diagnostics.cjs', 'web/dashboard.html', 'Diagnose.bat', '.github/ISSUE_TEMPLATE/bug_report.yml', 'src/magpie.cjs', 'src/magpie-plugin-store.cjs', 'magpie-plugin/package.json', 'magpie-plugin/history.middleware.js', 'magpie-plugin/history-filter.mjs', 'magpie-plugin/portable-web-search.mjs', 'src/guard-service.cjs', 'src/guard-evidence.cjs', 'src/guard-retry.cjs', 'src/guard.cjs', 'src/guard-transport.cjs', 'README.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'Start.bat', 'Stop.bat', 'Status.bat', 'start.ps1', 'assets/app.ico', 'assets/favicon.svg', 'assets/workbench-theme.css', 'assets/current-selection.js', 'docs/images/providers.png', 'docs/images/protection.png', 'docs/images/history.png', 'magpie-workbench/package.json', 'magpie-workbench/README.md', 'magpie-workbench/plugin/index.mjs', 'magpie-workbench/workbench.middleware.js']) {
+for (const required of ['filter.cjs', 'src/filter.cjs', 'src/config.cjs', 'src/proxy.cjs', 'src/management.cjs', 'src/diagnostics.cjs', 'web/dashboard.html', 'Diagnose.bat', '.github/ISSUE_TEMPLATE/bug_report.yml', 'src/service-backend.cjs', 'src/history-filter.mjs', 'src/portable-web-search.mjs', 'src/guard-service.cjs', 'src/guard-evidence.cjs', 'src/guard-retry.cjs', 'src/guard.cjs', 'src/guard-transport.cjs', 'README.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'Start.bat', 'Stop.bat', 'Status.bat', 'scripts/windows/start.ps1', 'web/assets/app.ico', 'web/assets/favicon.svg', 'web/assets/workbench-theme.css', 'web/assets/current-selection.js', 'docs/images/providers.png', 'docs/images/protection.png', 'docs/images/history.png', 'magpie-workbench/package.json', 'magpie-workbench/README.md', 'magpie-workbench/plugin/index.mjs', 'magpie-workbench/workbench.middleware.js']) {
   if (!files.includes(required)) issues.push(required + ': required release file is not staged/tracked');
+}
+for (const [mainFile, mirrorFile] of [['LICENSE', 'magpie-workbench/LICENSE'],
+  ['web/assets/workbench-theme.css', 'magpie-workbench/web/workbench-theme.css'],
+  ['web/assets/current-selection.js', 'magpie-workbench/web/current-selection.js'],
+  ['web/assets/favicon.svg', 'magpie-workbench/web/icon.svg'],
+  ['magpie-workbench/codex-history.middleware.js', 'magpie-workbench/history/codex-history.middleware.js']]) {
+  if (!files.includes(mainFile) || !files.includes(mirrorFile)) continue;
+  if (!fs.readFileSync(path.join(root, mainFile)).equals(fs.readFileSync(path.join(root, mirrorFile)))) {
+    issues.push(mainFile + ' and ' + mirrorFile + ': shared copies must be byte-identical');
+  }
 }
 import(pathToFileURL(path.join(workbenchRoot, 'server/middleware.mjs')).href).then(({combineMiddleware}) => {
   if (fs.readFileSync(path.join(workbenchRoot, 'workbench.middleware.js'), 'utf8') !== combineMiddleware()) {

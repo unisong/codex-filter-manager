@@ -17,15 +17,12 @@ function validateRule(rule) {
   return Object.fromEntries(RULE_KEYS.map(k => [k, rule[k]]));
 }
 
-function createManagement({databasePath, runtime, guard, adapter, pluginStore, log = () => {}}) {
+function createManagement({databasePath, runtime, guard, log = () => {}}) {
   const rulesPath = path.join(runtime, 'provider-rules.json');
   const aliasesPath = path.join(runtime, 'legacy-model-aliases.json');
+  let productVersion = '';
+  try { productVersion = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')).version || ''; } catch {}
   function readRules() {
-    if (pluginStore) {
-      const result = pluginStore.rules();
-      for (const rule of Object.values(result.data.providers)) validateRule(rule);
-      return result;
-    }
     let raw = '';
     try { raw = fs.readFileSync(rulesPath, 'utf8'); }
     catch (error) { if (error.code !== 'ENOENT') throw error; }
@@ -37,7 +34,6 @@ function createManagement({databasePath, runtime, guard, adapter, pluginStore, l
     return {raw, data, revision: createHash('sha256').update(raw).digest('hex')};
   }
   function listProviders(overrides) {
-    if (adapter) return adapter.listProviders(overrides);
     const db = new DatabaseSync(databasePath, {readOnly: true});
     try {
       const rows = db.prepare("SELECT id,name,is_current,CASE WHEN json_valid(settings_config) THEN json_extract(settings_config, '$.config') END AS config FROM providers WHERE app_type='codex' ORDER BY is_current DESC,sort_index,name").all();
@@ -65,18 +61,15 @@ function createManagement({databasePath, runtime, guard, adapter, pluginStore, l
   function state() {
     const rules = readRules();
     let aliasConfig;
-    if (!adapter) try { aliasConfig = JSON.parse(fs.readFileSync(aliasesPath, 'utf8')); } catch {}
-    return {...listProviders(rules.data.providers), revision: rules.revision,
-      ...(pluginStore ? {integration: pluginStore.state()} : {}),
+    try { aliasConfig = JSON.parse(fs.readFileSync(aliasesPath, 'utf8')); } catch {}
+    return {...listProviders(rules.data.providers), revision: rules.revision, productVersion,
       ...(guard ? {guard:guard.snapshot()} : {}),
       aliasCompatibility: {configured: !!aliasConfig, enabled: aliasConfig?.enabled === true,
-        activeCount: adapter ? 0 : readLegacyModelAliases(aliasesPath, databasePath).size},
+        activeCount: readLegacyModelAliases(aliasesPath, databasePath).size},
       currentPolicy: policy()};
   }
-  function policy(input) {
-    const result = adapter ? adapter.policy(readRules().data.providers, input) : readFilterPolicy(databasePath, readRules().data.providers);
-    if (pluginStore && !pluginStore.state().enabled) return {...result, filter: false, stripResponsesLiteHeader: false, reason: 'magpie-plugin-disabled'};
-    return result;
+  function policy() {
+    return readFilterPolicy(databasePath, readRules().data.providers);
   }
   function updateRule(id, rule, revision) {
     const before = readRules();
@@ -85,27 +78,21 @@ function createManagement({databasePath, runtime, guard, adapter, pluginStore, l
     if (!provider || (rule && !provider.editable)) throw new FilterError('unknown_provider', '供应商已移除或地址无法识别，请刷新列表。', 404);
     if (rule === null) delete before.data.providers[id];
     else Object.defineProperty(before.data.providers, id, {value: validateRule(rule), enumerable: true, configurable: true, writable: true});
-    if (pluginStore) {
-      if (rule?.stripResponsesLiteHeader) throw new FilterError('plugin_header_unsupported', 'Magpie 请求插件暂不支持修改 Lite 标头，请关闭此选项。', 409);
-      pluginStore.update(before.data.providers, revision);
-    } else {
-      if (before.raw) atomicWrite(rulesPath + '.previous', before.raw);
-      atomicWrite(rulesPath, JSON.stringify(before.data, null, 2) + '\n');
-    }
+    if (before.raw) atomicWrite(rulesPath + '.previous', before.raw);
+    atomicWrite(rulesPath, JSON.stringify(before.data, null, 2) + '\n');
     log('provider-rule-updated', {providerId: id, reset: rule === null});
     return state();
   }
   return {
     policy,
     html: token => fs.readFileSync(path.join(__dirname, '..', 'web', 'dashboard.html'), 'utf8').replace('__FILTER_TOKEN_JSON__', JSON.stringify(token)),
-    icon: () => fs.readFileSync(path.join(__dirname, '..', 'assets', 'favicon.svg')),
-    asset: name => ['workbench-theme.css','current-selection.js'].includes(name) ? fs.readFileSync(path.join(__dirname,'..','assets',name)) : null,
+    icon: () => fs.readFileSync(path.join(__dirname, '..', 'web', 'assets', 'favicon.svg')),
+    asset: name => ['workbench-theme.css','current-selection.js'].includes(name) ? fs.readFileSync(path.join(__dirname,'..','web','assets',name)) : null,
     state,
     handle(method, route, payload) {
       if (method === 'GET' && route === '/state') return state();
       const guardProvider = route.match(/^\/guard\/providers\/(.+)$/);
       if (guard && method === 'PUT' && guardProvider) {
-        if (pluginStore && payload.enabled === true) throw new FilterError('plugin_guard_unsupported', '当前使用 Magpie 原生历史过滤插件；可手动检测，但此插件不能自动检测或切断模型输出。', 409);
         const id = guardProvider[1];
         if (!listProviders(readRules().data.providers).providers.some(p => p.id === id)) throw new FilterError('unknown_provider','供应商已移除，请刷新列表。',404);
         if (typeof payload.revision !== 'string') throw new FilterError('guard_settings_changed','当前页面的模型保护设置已失效。本次修改未保存，请刷新后重试。',409);
@@ -124,7 +111,6 @@ function createManagement({databasePath, runtime, guard, adapter, pluginStore, l
       const match = route.match(/^\/providers\/(.+)\/rule$/);
       if (match && ['PUT', 'DELETE'].includes(method)) return updateRule(match[1], method === 'DELETE' ? null : payload.rule, payload.revision);
       if (method === 'PUT' && route === '/aliases') {
-        if (adapter) throw new FilterError('aliases_unavailable', 'Magpie 使用自身的供应商前缀，不应用 CC Switch 旧模型别名。', 409);
         if (typeof payload.enabled !== 'boolean') throw new FilterError('invalid_setting', '开关值无效。');
         let raw;
         try { raw = fs.readFileSync(aliasesPath, 'utf8'); }

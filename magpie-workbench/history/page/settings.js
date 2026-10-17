@@ -21,7 +21,7 @@
     validate(opts);
     if (!Array.isArray(providers) || providers.some(p => !object(p) || typeof p.id !== 'string' || !p.id
         || p.id.includes('/') || typeof p.name !== 'string')) throw new Error('invalid_providers');
-    const list = new Map(providers.map(p => [p.id, {...p, listed: true}]));
+    const list = new Map(providers.filter(p => p.hidden !== true).map(p => [p.id, {...p, listed: true}]));
     for (const key of Object.keys(opts.providers || {})) {
       if (key.startsWith('magpie:') && key.length > 7 && !list.has(key.slice(7))) {
         const id = key.slice(7);
@@ -32,7 +32,18 @@
       const id = target(opts, p.id), rule = ruleAt(opts, id);
       return {...p, target: id, configured: !!rule, on: rule?.historyFilter === true,
         include: rule ? rule.preserveEncryptedInclude === true : true};
-    }).sort((a, b) => Number(b.on) - Number(a.on) || Number(b.configured) - Number(a.configured) || a.name.localeCompare(b.name));
+    }).sort((a, b) => Number(b.on) - Number(a.on) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+  }
+  function view(base, draft, providers, {enabledOnly = false, query = ''} = {}) {
+    // Membership and order follow saved rules until saving succeeds. Switches
+    // still display the draft, so turning one off never moves it mid-edit.
+    const saved = rows(base, providers), edited = new Map(rows(draft, providers).map(row => [row.id, row]));
+    const search = query.trim().toLocaleLowerCase();
+    const shown = saved.filter(row => (!enabledOnly || row.on)
+      && (!search || [row.name, row.id, row.target].some(value => value.toLocaleLowerCase().includes(search))))
+      .map(row => edited.get(row.id));
+    return {rows: shown, total: saved.length, enabled: saved.filter(row => row.on).length,
+      narrowed: enabledOnly || !!search};
   }
   function change(opts, id, field, value) {
     if (!fields.includes(field) || typeof value !== 'boolean') throw new Error('invalid_change');
@@ -67,5 +78,5 @@
     }
     return result;
   }
-  globalThis.HistorySettings = {validate, rows, change, differences, merge};
+  globalThis.HistorySettings = {validate, rows, view, change, differences, merge};
 })();

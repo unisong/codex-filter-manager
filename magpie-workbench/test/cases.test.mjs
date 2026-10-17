@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import * as mod from '../codex-history.middleware.js';
 
-const cases = JSON.parse(readFileSync(new URL('../cases.json', import.meta.url), 'utf8'));
+const cases = JSON.parse(readFileSync(new URL('../../tests/fixtures/magpie-cases.json', import.meta.url), 'utf8'));
 test('only the request hook is exported', () => {
   assert.deepEqual(Object.keys(mod), ['onRequest']);
 });
