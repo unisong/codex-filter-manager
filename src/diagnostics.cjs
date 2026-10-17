@@ -127,7 +127,7 @@ function reachable(origin) {
 
 async function buildReport({service = {}, management, recorder, gatewayReachable, configMatches, requestObservationAvailable = true, now = Date.now()} = {}) {
   const report = {schemaVersion: 1, generatedAt: new Date(now).toISOString(), product: 'codex-filter-manager',
-    version: require('./package.json').version, runtime: {node: process.versions.node, platform: process.platform},
+    version: require('../package.json').version, runtime: {node: process.versions.node, platform: process.platform},
     service: {running: service.running === true, state: safeState(service.state),
       backend: service.backend === 'magpie' ? 'magpie' : service.backend === 'ccswitch' ? 'ccswitch' : 'unknown',
       filterVersion: Number.isInteger(service.filterVersion) ? service.filterVersion : null},

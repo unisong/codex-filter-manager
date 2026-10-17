@@ -7,7 +7,7 @@ const os = require('node:os');
 const path = require('node:path');
 const {createHash} = require('node:crypto');
 const {pathToFileURL} = require('node:url');
-const {createGuard, classify, FAILURE_COOLDOWN_SECONDS, TIMEOUT_MS} = require('./guard.cjs');
+const {createGuard, classify, FAILURE_COOLDOWN_SECONDS, TIMEOUT_MS} = require('../src/guard.cjs');
 
 const sample = Array.from({length: 300}, (_, index) => 1 + index).join(',');
 const requested = 'gpt-6-astra', different = 'gpt-6-luna';
@@ -508,7 +508,7 @@ test('corrupt configuration fails closed without silently losing enabled policy'
 });
 
 test('reference bank, pinned scorer and classification are executable with no external package', async () => {
-  const vendor = path.join(__dirname, 'vendor', 'modeltrace');
+  const vendor = path.join(__dirname, '..', 'vendor', 'modeltrace');
   const provenance = JSON.parse(fs.readFileSync(path.join(vendor, 'provenance.json'), 'utf8'));
   for (const [filename, value] of Object.entries(provenance.files)) {
     assert.equal(createHash('sha256').update(fs.readFileSync(path.join(vendor, filename))).digest('hex'), value.sha256);

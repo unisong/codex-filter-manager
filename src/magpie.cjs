@@ -46,7 +46,7 @@ function createMagpieAdapter({directory = defaultDirectory(), configPath, getUps
     // Custom middleware may rewrite a request before Magpie resolves its model.
     // Only the built-in preset is understood here; never guess at custom YAML.
     const pluginList = JSON.parse(optionalFile(path.join(directory, 'plugins.json'), '{"plugins":[]}'));
-    const ownPackage = path.resolve(__dirname, 'magpie-plugin');
+    const ownPackage = path.resolve(__dirname, '..', 'magpie-plugin');
     const customPlugins = plugins.split(/\r?\n/).some(line => line.trim() && !/^\s*(?:#|preset:\s*(?:all|none)\s*(?:#.*)?$)/.test(line))
       || (pluginList.plugins || []).some(p => !p.off && p.spec !== ownPackage);
     return {data, customPlugins, digest: createHash('sha256').update(JSON.stringify([raw, settings, plugins, pluginList, getUpstream()])).digest('hex')};

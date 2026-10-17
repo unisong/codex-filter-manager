@@ -8,8 +8,8 @@ const http = require('node:http');
 const zlib = require('node:zlib');
 const {once} = require('node:events');
 const {DatabaseSync} = require('node:sqlite');
-const {makeProxy, ADMIN} = require('./proxy.cjs');
-const {readLegacyModelAliases} = require('./config.cjs');
+const {makeProxy, ADMIN} = require('../src/proxy.cjs');
+const {readLegacyModelAliases} = require('../src/config.cjs');
 
 const alias = 'ccs-agent-router-github-code/gpt-6-astra';
 const model = 'gpt-6-astra';

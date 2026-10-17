@@ -2,9 +2,9 @@
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
-const {analyzeSamples, validateEvidence} = require('./guard-evidence.cjs');
-const {createGuard} = require('./guard.cjs');
-const {bank, numbers, outputs} = require('./scripts/guard-fixtures.cjs');
+const {analyzeSamples, validateEvidence} = require('../src/guard-evidence.cjs');
+const {createGuard} = require('../src/guard.cjs');
+const {bank, numbers, outputs} = require('../scripts/guard-fixtures.cjs');
 const model = 'gpt-6-astra', alternate = 'gpt-6-luna';
 const context = () => ({key: 'synthetic-key', providerId: 'synthetic-provider', providerName: 'Offline fixture', model, effort: 'high'});
 function fixture(t, probe) {

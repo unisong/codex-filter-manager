@@ -38,7 +38,7 @@ function model(value) {
   // A missing/corrupt bank must reach the guard's existing recoverable fatal
   // state rather than crashing management-page startup while requiring us.
   if (!modelIds) {
-    try { modelIds = new Set(require('./vendor/modeltrace/unified_bank.json').models.map(item => item.id)); }
+    try { modelIds = new Set(require('../vendor/modeltrace/unified_bank.json').models.map(item => item.id)); }
     catch { return false; }
   }
   return modelIds.has(value);
@@ -100,7 +100,7 @@ function analyzeSamples(outputs, bank, expected) {
   if (!array(outputs, SAMPLE_COUNT, SAMPLE_COUNT) || !model(expected)) throw invalid();
   // The guard verifies pinned artifact hashes before starting an analysis.
   // Defer loading executable vendor code until that verification has run.
-  const scorer = require('./vendor/modeltrace/fingerprint-core.mjs');
+  const scorer = require('../vendor/modeltrace/fingerprint-core.mjs');
   const samples = outputs.map(output => {
     if (!output || typeof output.text !== 'string' || output.text.length > 65536
         || !Number.isInteger(output.expected_count) || output.expected_count < 292 || output.expected_count > 332) throw invalid();

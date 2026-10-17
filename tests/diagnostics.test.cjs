@@ -6,9 +6,9 @@ const path = require('node:path');
 const http = require('node:http');
 const {once} = require('node:events');
 const {randomUUID} = require('node:crypto');
-const {createDiagnostics, buildReport} = require('./diagnostics.cjs');
-const {makeProxy, ADMIN} = require('./proxy.cjs');
-const {diagnose, parseArgs} = require('./filter.cjs');
+const {createDiagnostics, buildReport} = require('../src/diagnostics.cjs');
+const {makeProxy, ADMIN} = require('../src/proxy.cjs');
+const {diagnose, parseArgs} = require('../src/filter.cjs');
 function fixture(t) {
   const root = fs.realpathSync(process.env.PI_SCRATCH_DIR), runtime = fs.mkdtempSync(path.join(root, 'diagnostics-'));
   t.after(() => { assert.equal(path.dirname(fs.realpathSync(runtime)), root); fs.rmSync(runtime, {recursive: true, force: true}); });

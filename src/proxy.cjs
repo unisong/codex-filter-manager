@@ -4,14 +4,14 @@ const http = require('node:http');
 const zlib = require('node:zlib');
 const {timingSafeEqual, randomUUID} = require('node:crypto');
 const {collectResponse} = require('./guard-transport.cjs');
-const FILTER_VERSION = 32;
+const FILTER_VERSION = 33;
 const SERVICE = 'ccswitch-codex-reasoning-filter-v1';
 const ADMIN = '/__codex_filter__';
 const LIMIT = 64 * 1024 * 1024;
 // Quota/credit exhaustion will never clear by replaying; only queue/rate-limit 429s are retried.
 const PERMANENT_429 = /insufficient_quota|credit_balance|quota.?exceeded|not enough quota|余额不足|额度不足/i;
 const RESPONSES_LITE_HEADER = 'x-openai-internal-codex-responses-lite';
-const {FilterError, filterResponsesRequest} = require('./magpie-plugin/history-filter.mjs');
+const {FilterError, filterResponsesRequest} = require('../magpie-plugin/history-filter.mjs');
 
 function publicPolicy(policy) {
   const filter = policy?.filter === true;

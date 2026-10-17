@@ -135,8 +135,12 @@ function Test-FilterProcessInThisFolder {
         $state = [IO.File]::ReadAllText($statePath) | ConvertFrom-Json
         if (-not $state.pid -or $state.pid -lt 1) { return $false }
         $process = Get-CimInstance Win32_Process -Filter ('ProcessId=' + [int]$state.pid)
-        $script = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'filter.cjs'))
-        return $process -and $process.CommandLine -match ('(?:^|["\s])' + [regex]::Escape($script) + '(?:["\s]|$)') -and $process.CommandLine -match '(?:^|\s)serve(?:\s|$)'
+        if (-not $process -or $process.CommandLine -notmatch '(?:^|\s)serve(?:\s|$)') { return $false }
+        foreach ($entry in @('filter.cjs', 'src\filter.cjs')) {
+            $script = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot $entry))
+            if ($process.CommandLine -match ('(?:^|["\s])' + [regex]::Escape($script) + '(?:["\s]|$)')) { return $true }
+        }
+        return $false
     } catch { return $false }
 }
 
@@ -165,7 +169,7 @@ try {
         return
     }
     if ($Action -ne 'Start') { $service | ConvertTo-Json -Depth 10; return }
-    $versionMatch = [regex]::Match([IO.File]::ReadAllText((Join-Path $PSScriptRoot 'proxy.cjs')), 'const FILTER_VERSION\s*=\s*(\d+)')
+    $versionMatch = [regex]::Match([IO.File]::ReadAllText((Join-Path $PSScriptRoot 'src\proxy.cjs')), 'const FILTER_VERSION\s*=\s*(\d+)')
     if (-not $versionMatch.Success) { throw 'Cannot read the source version; please extract a complete release ZIP.' }
     $sourceVersion = [int]$versionMatch.Groups[1].Value
     if ($service.running -and $service.filterVersion -ne $sourceVersion) {

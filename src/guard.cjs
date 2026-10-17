@@ -12,7 +12,7 @@ const TERMINAL_STATUSES = new Set(['passed', 'blocked', 'unverified', 'unsupport
 const HISTORY_SOURCES = new Set(['automatic', 'manual', 'response', 'legacy']);
 const TIMEOUT_MS = 600000;
 const FAILURE_COOLDOWN_SECONDS = 60;
-const ARTIFACT_ROOT = path.join(__dirname, 'vendor', 'modeltrace');
+const ARTIFACT_ROOT = path.join(__dirname, '..', 'vendor', 'modeltrace');
 const HASHES = {
   'challenge-browser.mjs': '4a3868c9fe237cabde92f0d2bffaf32118f558f7a43fcc336874fecd2bf6be39',
   'fingerprint-core.mjs': 'adff55637f6c0534c2c10703e028d4d1970d325e8daecb55efaa7f95a1938d5c',

@@ -5,14 +5,14 @@ const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
 const zlib = require('node:zlib');
-const {createMagpieAdapter, detectBackend, discoverMagpie} = require('./magpie.cjs');
-const {ConfigRouter, providerBase} = require('./config.cjs');
-const {createManagement} = require('./management.cjs');
-const {createGuardService} = require('./guard-service.cjs');
-const {probe, collectResponse} = require('./guard-transport.cjs');
-const {makeProxy} = require('./proxy.cjs');
+const {createMagpieAdapter, detectBackend, discoverMagpie} = require('../src/magpie.cjs');
+const {ConfigRouter, providerBase} = require('../src/config.cjs');
+const {createManagement} = require('../src/management.cjs');
+const {createGuardService} = require('../src/guard-service.cjs');
+const {probe, collectResponse} = require('../src/guard-transport.cjs');
+const {makeProxy} = require('../src/proxy.cjs');
 const {Readable} = require('node:stream');
-const {parseArgs, start, stop} = require('./filter.cjs');
+const {parseArgs, start, stop} = require('../src/filter.cjs');
 
 function fixture(t) {
   const parent = fs.realpathSync(process.env.PI_SCRATCH_DIR);

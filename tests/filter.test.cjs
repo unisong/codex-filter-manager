@@ -8,10 +8,10 @@ const http = require('node:http');
 const net = require('node:net');
 const zlib = require('node:zlib');
 const {once} = require('node:events');
-const {spawn} = require('node:child_process');
-const {makeProxy, filterResponsesRequest, localOrigin, decodeBody, ADMIN} = require('./proxy.cjs');
-const {ConfigRouter, providerBase, readFilterPolicy} = require('./config.cjs');
-const {start, stop, status, parseArgs, ownsProcess} = require('./filter.cjs');
+const {spawn, spawnSync} = require('node:child_process');
+const {makeProxy, filterResponsesRequest, localOrigin, decodeBody, ADMIN} = require('../src/proxy.cjs');
+const {ConfigRouter, providerBase, readFilterPolicy} = require('../src/config.cjs');
+const {start, stop, status, parseArgs, ownsProcess} = require('../filter.cjs');
 
 async function listen(server) {
   server.listen(0, '127.0.0.1');
@@ -63,6 +63,18 @@ const sample = {
       content: [{type: 'output_text', text: 'done', annotations: [{type: 'file_citation', file_id: 'file_keep', index: 0, filename: 'evidence.txt'}]}]}
   ]
 };
+
+test('public CLI works outside the install folder and keeps the existing runtime location', t => {
+  const directory = fixture(t);
+  const project = path.resolve(__dirname, '..');
+  const result = spawnSync(process.execPath, [path.join(project, 'filter.cjs'), 'help'], {
+    cwd: directory, encoding: 'utf8', windowsHide: true, timeout: 10000
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /node filter\.cjs start\|stop\|status\|diagnose\|serve/);
+  assert.equal(parseArgs(['help']).runtime, path.join(project, '.runtime'));
+  assert.equal(parseArgs(['help', '--runtime', directory]).runtime, directory);
+});
 
 test('removes historical reasoning while preserving tools, images, effort, and original input', () => {
   const snapshot = JSON.stringify(sample);
@@ -291,7 +303,7 @@ test('HTTP filtering handles all compressed forms and preserves authorization, p
   const health = JSON.parse((await call(origin, ADMIN + '/health', {method: 'GET'})).body);
   assert.equal(health.stats.filteredRequests, 7);
   assert.equal(health.stats.removedReasoningItems, 7);
-  assert.equal(health.filterVersion, 32);
+  assert.equal(health.filterVersion, 33);
   assert.equal(health.stats.removedItemIds, 35);
   assert.equal(health.stats.upstreamHttpErrors, 5);
   assert.equal(health.stats.lastUpstreamStatus, 200);
@@ -817,7 +829,7 @@ test('provider switches per request; non-target, unknown and failover pass compr
   assert.equal(health.policy.mode, 'passthrough');
   assert.equal(health.policy.reason, 'auto-failover-or-unknown');
   assert.equal(health.stats.filteredRequests, 3);
-  assert.equal(health.filterVersion, 32);
+  assert.equal(health.filterVersion, 33);
 });
 test('explicit include preservation applies only to configured provider IDs', async t => {
   const {db, filename, select} = mockDatabase(t);
@@ -860,7 +872,7 @@ test('explicit include preservation applies only to configured provider IDs', as
   assert.equal((await call(origin, '/responses', {body: raw})).status, 200);
   assert.deepEqual(received.raw, raw);
   const health = JSON.parse((await call(origin, ADMIN + '/health', {method: 'GET'})).body);
-  assert.equal(health.filterVersion, 32);
+  assert.equal(health.filterVersion, 33);
   assert.equal(health.stats.filteredRequests, 2);
   assert.equal(health.stats.removedReasoningItems, 2);
   assert.equal(health.stats.removedItemIds, 10);
@@ -939,7 +951,7 @@ test('control recognizes legacy services and refuses silently changing routing o
     await assert.rejects(start({...options, databasePath: path.join(directory, 'second.db')}), /database\/upstream/);
     await assert.rejects(start({...options, upstream: 'http://127.0.0.1:12345'}), /database\/upstream/);
   }
-  assert.equal(require('./proxy.cjs').SERVICE, 'ccswitch-codex-reasoning-filter-v1');
+  assert.equal(require('../src/proxy.cjs').SERVICE, 'ccswitch-codex-reasoning-filter-v1');
 });
 
 test('stale service.json whose PID was reused by another process no longer blocks stop or start', {timeout: 30000}, async t => {

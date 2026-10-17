@@ -26,6 +26,6 @@ jobs:
           python -m playwright install chromium
       - name: Browser checks (no supplier requests)
         run: |
-          python dashboard-check.py
-          python guard-dashboard-check.py
-          python magpie-dashboard-check.py
+          python tests/dashboard-check.py
+          python tests/guard-dashboard-check.py
+          python tests/magpie-dashboard-check.py

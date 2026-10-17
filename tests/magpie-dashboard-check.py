@@ -7,13 +7,13 @@ import subprocess
 import tempfile
 from playwright.sync_api import sync_playwright, expect
 
-root = Path(__file__).resolve().parent
+root = Path(__file__).resolve().parent.parent
 source = r'''
 const fs=require('node:fs'),path=require('node:path');
-const {createMagpieAdapter}=require('./magpie.cjs');
-const {createManagement}=require('./management.cjs');
-const {createGuardService}=require('./guard-service.cjs');
-const {makeProxy}=require('./proxy.cjs');
+const {createMagpieAdapter}=require('./src/magpie.cjs');
+const {createManagement}=require('./src/management.cjs');
+const {createGuardService}=require('./src/guard-service.cjs');
+const {makeProxy}=require('./src/proxy.cjs');
 const runtime=process.argv[1],configPath=path.join(runtime,'config.toml');
 fs.writeFileSync(configPath,'model="demo/gpt-6-astra"\nmodel_provider="magpie"\n[model_providers.magpie]\nbase_url="http://127.0.0.1:3425/v1"\n');
 fs.writeFileSync(path.join(runtime,'providers.json'),JSON.stringify({providers:[
@@ -23,7 +23,7 @@ fs.writeFileSync(path.join(runtime,'providers.json'),JSON.stringify({providers:[
 const getUpstream=()=> 'http://127.0.0.1:1';
 const adapter=createMagpieAdapter({directory:runtime,configPath,getUpstream});
 const guard=createGuardService({runtime,configPath,getUpstream,adapter});
-const {createMagpiePluginStore}=require('./magpie-plugin-store.cjs');
+const {createMagpiePluginStore}=require('./src/magpie-plugin-store.cjs');
 const pluginStore=createMagpiePluginStore({directory:runtime});pluginStore.install();
 const dashboard=createManagement({runtime,adapter,guard,pluginStore});
 const server=makeProxy({token:'offline-ui',dashboard,getUpstream,getState:()=>({state:'magpie-plugin',backend:'magpie'})});
@@ -48,7 +48,7 @@ with tempfile.TemporaryDirectory(prefix='magpie-ui-') as scratch:
             expect(page.locator('#legacyAliasesCard')).to_be_hidden()
             expect(page.locator('#current')).to_have_text('演示供应商')
             expect(page.locator('#current').locator('..').locator('.label')).to_contain_text('配置默认供应商')
-            expect(page.locator('#versionBadge')).to_have_text('v32')
+            expect(page.locator('#versionBadge')).to_have_text('v33')
             expect(page.locator('#currentHistoryEnabled')).to_have_attribute('aria-checked', 'false')
             page.locator('#currentHistoryEnabled').click()
             expect(page.locator('#currentHistoryEnabled')).to_have_attribute('aria-checked', 'true')

@@ -2,8 +2,8 @@
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http'), {once} = require('node:events');
-const {probeWithRetry} = require('./guard-retry.cjs');
-const {guardFailure, probe} = require('./guard-transport.cjs');
+const {probeWithRetry} = require('../src/guard-retry.cjs');
+const {guardFailure, probe} = require('../src/guard-transport.cjs');
 const transient = (retryAfterMs = 0) => Object.assign(guardFailure('synthetic transient'), {retryable: true, retryAfterMs});
 test('three extra attempts are shared across samples, using the same prompt and context', async () => {
   const budget = {used: 0}, waits = [], progress = [], context = {model: 'gpt-6-astra'};
@@ -56,7 +56,7 @@ test('HTTP errors classify transient retries without retrying auth, quota or uns
 });
 test('invalidating a route while the guard is backing off cancels further attempts', async t => {
   const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
-  const {createGuard} = require('./guard.cjs');
+  const {createGuard} = require('../src/guard.cjs');
   const parent = fs.realpathSync(process.env.PI_SCRATCH_DIR || os.tmpdir());
   const runtime = fs.mkdtempSync(path.join(parent, 'guard-retry-route-'));
   t.after(() => {assert.equal(path.dirname(fs.realpathSync(runtime)), parent);fs.rmSync(runtime, {recursive: true, force: true});});

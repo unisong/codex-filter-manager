@@ -4,8 +4,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const {DatabaseSync} = require('node:sqlite');
-const {createGuardService,readRoute,topString} = require('./guard-service.cjs');
-const {createManagement} = require('./management.cjs');
+const {createGuardService,readRoute,topString} = require('../src/guard-service.cjs');
+const {createManagement} = require('../src/management.cjs');
 
 function fixture(t,extra = {}) {
   const root = fs.realpathSync(process.env.PI_SCRATCH_DIR);
@@ -97,7 +97,7 @@ test('stale or missing settings revisions cannot disable protection from another
   assert.equal(restarted.snapshot().providers.one.enabled,true);
 });
 test('probe results, cache reads and no-op settings saves keep the settings revision stable',async t=>{
-  const {createGuard}=require('./guard.cjs');
+  const {createGuard}=require('../src/guard.cjs');
   const f=fixture(t,{probe:async()=>({model:input.model,text:values}),engineFactory:opts=>createGuard({...opts,analyze:()=>({used_outputs:3,
     diagnostics:Array.from({length:3},()=>({accepted:true})),results:[{model:input.model,probability:.98},{model:'gpt-6-luna',probability:.02}]})})});
   f.guard.configure('one',{enabled:true,ttlSeconds:600});

@@ -6,7 +6,7 @@ const {atomicWrite} = require('./config.cjs');
 
 // Own one local middleware entry only. Provider configuration and credentials
 // remain Magpie's; the same options drive both the UI and the request hook.
-function createMagpiePluginStore({directory, packagePath = path.join(__dirname, 'magpie-plugin')}) {
+function createMagpiePluginStore({directory, packagePath = path.join(__dirname, '..', 'magpie-plugin')}) {
   const filename = path.join(directory, 'plugins.json');
   const spec = path.resolve(packagePath);
   function read() {

@@ -1,3 +1,4 @@
+// v0.1.1: recompile the shared filter and its portable web-search adapter on update.
 import {filterResponsesRequest, FilterError} from './history-filter.mjs';
 
 export function onRequest(body, ctx) {

@@ -4,12 +4,12 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
-const {onRequest} = require('./magpie-plugin/history.middleware.js');
-const {filterResponsesRequest} = require('./proxy.cjs');
-const {createMagpiePluginStore} = require('./magpie-plugin-store.cjs');
-const {createManagement} = require('./management.cjs');
-const {createMagpieAdapter} = require('./magpie.cjs');
-const {makeProxy} = require('./proxy.cjs');
+const {onRequest} = require('../magpie-plugin/history.middleware.js');
+const {filterResponsesRequest} = require('../src/proxy.cjs');
+const {createMagpiePluginStore} = require('../src/magpie-plugin-store.cjs');
+const {createManagement} = require('../src/management.cjs');
+const {createMagpieAdapter} = require('../src/magpie.cjs');
+const {makeProxy} = require('../src/proxy.cjs');
 
 const rule = {historyFilter: true, preserveEncryptedInclude: true, stripResponsesLiteHeader: false};
 function context(overrides = {}) {
@@ -116,7 +116,7 @@ test('plugin store and management share options, preserve other plugins and neve
   const before = store.rules();
   const other = JSON.parse(fs.readFileSync(filename, 'utf8')); other.plugins[0].off = false; fs.writeFileSync(filename, JSON.stringify(other));
   assert.throws(() => store.update(before.data.providers, before.revision), /changed/);
-  other.plugins.find(p => p.spec === path.resolve(__dirname, 'magpie-plugin')).off = true;
+  other.plugins.find(p => p.spec === path.resolve(__dirname, '..', 'magpie-plugin')).off = true;
   fs.writeFileSync(filename, JSON.stringify(other));
   assert.equal(manager.state().integration.enabled, false);
   assert.equal(manager.state().currentPolicy.filter, false);

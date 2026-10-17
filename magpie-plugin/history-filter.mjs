@@ -1,3 +1,5 @@
+import {portableWebSearch} from './portable-web-search.mjs';
+
 // These input forms carry their own contents; the server-issued item id is optional.
 // Other tool/resource types may require their IDs, so don't recursively strip IDs.
 const PORTABLE_ITEMS = new Set(['message', 'agent_message', 'function_call', 'function_call_output',
@@ -48,6 +50,10 @@ export function filterResponsesRequest(body, {preserveEncryptedInclude = false} 
       const isMessage = item && item.type === undefined && typeof item.role === 'string' && item.content !== undefined;
       if (item && typeof item === 'object') {
         const portable = removeEncryptedContent(item, () => { removedEncryptedContentItems++; });
+        if (item.type === 'web_search_call') {
+          if (Object.hasOwn(portable, 'id')) removedItemIds++;
+          return portableWebSearch(portable);
+        }
         if (PORTABLE_ITEMS.has(item.type) || isMessage) {
           if (Object.hasOwn(portable, 'id')) {
             delete portable.id;

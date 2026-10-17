@@ -7,9 +7,9 @@ const os = require('node:os');
 const http = require('node:http');
 const {spawn} = require('node:child_process');
 const readline = require('node:readline');
-const {providerBase} = require('./config.cjs');
-const {SERVICE, ADMIN, decodeBody} = require('./proxy.cjs');
-const {request} = require('./filter.cjs');
+const {providerBase} = require('../src/config.cjs');
+const {SERVICE, ADMIN, decodeBody} = require('../src/proxy.cjs');
+const {request} = require('../src/filter.cjs');
 
 function codexExecutable() {
   const override = process.argv.indexOf('--codex');
@@ -104,7 +104,7 @@ async function main() {
     '-c', 'model_providers.' + provider.provider + '.stream_max_retries=0',
     '-c', 'model_reasoning_effort="low"',
     'This is a connectivity test. Reply with exactly FILTER_OK. Do not use tools or change files.'],
-    {cwd: __dirname, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe']});
+    {cwd: path.resolve(__dirname, '..'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe']});
   let output = '', completed = false, cliError = false;
   child.stderr.resume();
   const lines = readline.createInterface({input: child.stdout});

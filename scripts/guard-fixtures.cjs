@@ -21,7 +21,7 @@ function outputs(model, start = 0) {
 }
 module.exports = {bank, numbers, outputs};
 if (require.main === module) {
-  const {analyzeSamples} = require('../guard-evidence.cjs');
+  const {analyzeSamples} = require('../src/guard-evidence.cjs');
   const expected = 'gpt-6-astra';
   const pass = outputs(expected), different = outputs('gpt-6-luna');
   console.log(JSON.stringify({

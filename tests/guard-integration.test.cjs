@@ -4,8 +4,8 @@ const assert = require('node:assert/strict');
 const http = require('node:http');
 const zlib = require('node:zlib');
 const {once} = require('node:events');
-const {makeProxy} = require('./proxy.cjs');
-const {guardFailure,createEventParser,probe} = require('./guard-transport.cjs');
+const {makeProxy} = require('../src/proxy.cjs');
+const {guardFailure,createEventParser,probe} = require('../src/guard-transport.cjs');
 
 const model = 'gpt-6-astra';
 const event = data => 'data: '+JSON.stringify(data)+'\n\n';

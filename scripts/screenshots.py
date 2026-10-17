@@ -18,8 +18,8 @@ args = parser.parse_args()
 root = Path(__file__).resolve().parent.parent
 output = args.output or root / 'docs/images'
 output.mkdir(parents=True, exist_ok=True)
-html = (root / 'dashboard.html').read_text(encoding='utf-8').replace('__FILTER_TOKEN_JSON__', '"demo-only"')
-version = int(re.search(r'FILTER_VERSION\s*=\s*(\d+)', (root / 'proxy.cjs').read_text(encoding='utf-8')).group(1))
+html = (root / 'web' / 'dashboard.html').read_text(encoding='utf-8').replace('__FILTER_TOKEN_JSON__', '"demo-only"')
+version = int(re.search(r'FILTER_VERSION\s*=\s*(\d+)', (root / 'src' / 'proxy.cjs').read_text(encoding='utf-8')).group(1))
 fixture_evidence = json.loads(subprocess.check_output(['node', 'scripts/guard-fixtures.cjs'], cwd=root, text=True))
 off = {'historyFilter': False, 'preserveEncryptedInclude': True, 'stripResponsesLiteHeader': False}
 providers = [

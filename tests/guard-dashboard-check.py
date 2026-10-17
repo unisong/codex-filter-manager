@@ -10,10 +10,10 @@ import subprocess
 import tempfile
 from playwright.sync_api import sync_playwright, expect
 
-root = Path(__file__).resolve().parent
+root = Path(__file__).resolve().parent.parent
 (root / '.runtime').mkdir(exist_ok=True)
-html = (root / "dashboard.html").read_text(encoding="utf-8")
-filter_version = int(re.search(r"FILTER_VERSION\s*=\s*(\d+)", (root / "proxy.cjs").read_text(encoding="utf-8")).group(1))
+html = (root / "web" / "dashboard.html").read_text(encoding="utf-8")
+filter_version = int(re.search(r"FILTER_VERSION\s*=\s*(\d+)", (root / "src" / "proxy.cjs").read_text(encoding="utf-8")).group(1))
 rule = {"historyFilter": False, "preserveEncryptedInclude": True, "stripResponsesLiteHeader": False}
 state = {
     "providers": [
@@ -626,10 +626,10 @@ with sync_playwright() as p:
 node_source = r'''
 const fs=require('node:fs'),path=require('node:path');
 const {DatabaseSync}=require('node:sqlite');
-const {makeProxy}=require('./proxy.cjs');
-const {createManagement}=require('./management.cjs');
-const {createGuardService}=require('./guard-service.cjs');
-const {createGuard}=require('./guard.cjs');
+const {makeProxy}=require('./src/proxy.cjs');
+const {createManagement}=require('./src/management.cjs');
+const {createGuardService}=require('./src/guard-service.cjs');
+const {createGuard}=require('./src/guard.cjs');
 const runtime=process.argv[1],databasePath=path.join(runtime,'fixture.db'),configPath=path.join(runtime,'config.toml');
 const db=new DatabaseSync(databasePath);
 db.exec("PRAGMA user_version=19; CREATE TABLE providers(id TEXT,name TEXT,app_type TEXT,is_current INTEGER,settings_config TEXT,sort_index INTEGER); CREATE TABLE proxy_config(app_type TEXT,auto_failover_enabled INTEGER); INSERT INTO proxy_config VALUES('codex',0)");

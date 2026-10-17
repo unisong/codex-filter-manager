@@ -7,7 +7,8 @@ const project = path.resolve(__dirname, '..');
 const temporaryRoot = fs.realpathSync(os.tmpdir());
 const scratch = fs.mkdtempSync(path.join(temporaryRoot, 'codex-filter-tests-'));
 try {
-  const tests = fs.readdirSync(project).filter(name => name.endsWith('.test.cjs')).sort();
+  const tests = fs.readdirSync(path.join(project, 'tests')).filter(name => name.endsWith('.test.cjs')).sort()
+    .map(name => path.join('tests', name));
   const result = spawnSync(process.execPath, ['--test', ...tests], {
     cwd: project, stdio: 'inherit', windowsHide: true,
     env: {...process.env, PI_SCRATCH_DIR: scratch}

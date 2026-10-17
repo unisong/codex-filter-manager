@@ -12,22 +12,55 @@ CC Switch 模式启动会接管当前用户的 Codex 配置；Magpie 模式安�
 
 | 文件 | 用途 |
 | --- | --- |
-| `filter.cjs` | 后台生命周期、启动/停止、配置接入 |
-| `config.cjs` | CC Switch 发现、只读策略、精确地址恢复 |
-| `magpie.cjs` | Magpie 只读供应商发现、请求路由与隔离规则 |
-| `magpie-plugin-store.cjs` | 维护 Magpie 中本工具的插件条目与管理页规则 |
+| `filter.cjs` | 兼容现有命令和启动器的轻量入口，调用 `src/filter.cjs` |
+| `src/filter.cjs` | 后台生命周期、启动/停止、配置接入 |
+| `src/config.cjs` | CC Switch 发现、只读策略、精确地址恢复 |
+| `src/magpie.cjs` | Magpie 只读供应商发现、请求路由与隔离规则 |
+| `src/magpie-plugin-store.cjs` | 维护 Magpie 中本工具的插件条目与管理页规则 |
 | `magpie-plugin/` | 原生请求钩子及与独立代理共用的历史清理算法 |
-| `proxy.cjs` | HTTP/SSE 转发、历史清理、429 重试 |
-| `management.cjs` | 本机管理 API、规则与页面 |
-| `diagnostics.cjs` | 字段白名单日志、运行中轮转、脱敏诊断报告 |
-| `dashboard.html` | 不依赖前端构建的可视化页面 |
-| `guard.cjs` | 指纹检查、通过缓存、锁定和检测历史 |
-| `guard-evidence.cjs` | 逐样本与汇总评分、数字证据结构校验 |
-| `guard-retry.cjs` | 整次检测共享重试预算与可取消退避 |
-| `guard-service.cjs` | 路由上下文、请求授权与引擎衔接 |
-| `guard-transport.cjs` | 探针请求、完整响应验证与缓存预算 |
+| `src/proxy.cjs` | HTTP/SSE 转发、历史清理、429 重试 |
+| `src/management.cjs` | 本机管理 API、规则与页面 |
+| `src/diagnostics.cjs` | 字段白名单日志、运行中轮转、脱敏诊断报告 |
+| `web/dashboard.html`、`assets/` | 不依赖前端构建的可视化页面、共享样式与图标 |
+| `src/guard.cjs` | 指纹检查、通过缓存、锁定和检测历史 |
+| `src/guard-evidence.cjs` | 逐样本与汇总评分、数字证据结构校验 |
+| `src/guard-retry.cjs` | 整次检测共享重试预算与可取消退避 |
+| `src/guard-service.cjs` | 路由上下文、请求授权与引擎衔接 |
+| `src/guard-transport.cjs` | 探针请求、完整响应验证与缓存预算 |
+| `tests/` | Node 自动测试与 Python 离线浏览器检查 |
+| `scripts/` | 测试入口、启动器验证、打包、截图与手动连通性检查 |
 | `vendor/modeltrace/` | 固定版本的第三方出题器、评分器、参考库与许可 |
 | `start.ps1`、`Start.bat` 等 | Windows 一键启动、停止和状态入口 |
+
+## 命令行与自定义路径
+
+在项目目录执行，`stop`、`status`、`diagnose` 使用与 `start` 相同的路径参数：
+
+```powershell
+node filter.cjs start
+node filter.cjs status
+node filter.cjs stop
+node filter.cjs diagnose
+```
+
+默认配置为 `%CODEX_HOME%\config.toml`；未设置 `CODEX_HOME` 时使用 `%USERPROFILE%\.codex\config.toml`。默认运行数据为安装目录的 `.runtime/`。CC Switch 数据库默认在 `%USERPROFILE%\.cc-switch\cc-switch.db`，代理端口从数据库读取。
+
+仅在确有自定义配置、端口或数据目录时覆盖：
+
+```powershell
+node filter.cjs start --backend ccswitch --port 18181 --upstream http://127.0.0.1:15721 --config "D:\Codex\config.toml" --runtime "D:\FilterData" --cc-db "D:\CCSwitch\cc-switch.db"
+node filter.cjs start --backend magpie --magpie-dir "D:\MagpieData" --upstream http://127.0.0.1:3425
+```
+
+Magpie 默认数据目录为 `%USERPROFILE%\.config\magpie`，从 `settings.json` 的 `port` 读取端口，未设置时为 `3425`。便携目录或 `MAGPIE_ADDR` 自定义地址需显式指定。两种模式的具体边界见 [Magpie 适配说明](docs/MAGPIE.md)。
+
+Windows 启动器对应 `-Backend`、`-Port`、`-Upstream`、`-Config`、`-Runtime`、`-CcDb` 和 `-MagpieDir`，例如：
+
+```powershell
+powershell -File .\start.ps1 -Action Diagnose -Runtime "D:\FilterData" -Config "D:\Codex\config.toml"
+```
+
+诊断不会启动服务或改写配置；需要已安装 Node.js 24+ 或启动器缓存的便携运行时。报告写入所选运行目录的 `reports/`。启动器的 `ExecutionPolicy Bypass` 仅作用于当前进程，不修改系统执行策略。
 
 ## 本地验证
 
@@ -40,19 +73,19 @@ npm test
 ```powershell
 $env:PI_SCRATCH_DIR = Join-Path $env:TEMP 'codex-filter-tests'
 New-Item -ItemType Directory -Force $env:PI_SCRATCH_DIR | Out-Null
-node --test *.test.cjs
+node --test tests/*.test.cjs
 ```
 
 浏览器测试是可选的开发工具，需另行准备 Python 和 Playwright。运行 `python -m playwright install chromium` 安装测试浏览器；也可通过环境变量 `CHROME_PATH` 指向本机 Chrome 可执行文件。测试默认使用 Playwright 管理的 Chromium。
 
 ```powershell
 python -m pip install playwright
-python .\dashboard-check.py
-python .\guard-dashboard-check.py
-python .\magpie-dashboard-check.py
+python .\tests\dashboard-check.py
+python .\tests\guard-dashboard-check.py
+python .\tests\magpie-dashboard-check.py
 ```
 
-这些脚本使用模拟供应商数据，不应连接正式页面或读取真实凭据。`live-check.cjs` 与 `live-guard-check.cjs` 属于**明确手动执行的真实供应商检查**，可能调用模型并计费，不应放入 CI 或默认测试链。
+这些脚本使用模拟供应商数据，不应连接正式页面或读取真实凭据。`scripts/live-check.cjs` 与 `scripts/live-guard-check.cjs` 属于**明确手动执行的真实供应商检查**，可能调用模型并计费，不应放入 CI 或默认测试链。
 
 ## 修改要求
 

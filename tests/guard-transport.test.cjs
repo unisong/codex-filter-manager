@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const http = require('node:http');
 const zlib = require('node:zlib');
 const {once} = require('node:events');
-const {probe,PROBE_TIMEOUT_MS} = require('./guard-transport.cjs');
+const {probe,PROBE_TIMEOUT_MS} = require('../src/guard-transport.cjs');
 
 async function rejectedProbe(t, handler, extra = {}) {
   const upstream = http.createServer(handler);

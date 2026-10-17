@@ -6,12 +6,12 @@ const fs=require('node:fs');
 const os=require('node:os');
 const path=require('node:path');
 const {once}=require('node:events');
-const {createGuardService}=require('./guard-service.cjs');
-const {makeProxy}=require('./proxy.cjs');
+const {createGuardService}=require('../src/guard-service.cjs');
+const {makeProxy}=require('../src/proxy.cjs');
 
 async function main() {
   if (!process.argv.includes('--allow-paid-probe')) throw new Error('This diagnostic sends paid upstream requests. Re-run with --allow-paid-probe only when intended.');
-  const service=JSON.parse(fs.readFileSync(path.join(__dirname,'.runtime','service.json'),'utf8'));
+  const service=JSON.parse(fs.readFileSync(path.join(__dirname,'..','.runtime','service.json'),'utf8'));
   const base=service.filterOrigin+'/__codex_filter__';
   const health=await(await fetch(base+'/health')).json();
   const liveState=await(await fetch(base+'/api/state',{headers:{'x-filter-token':service.token}})).json();
@@ -44,7 +44,7 @@ async function main() {
       productionGuardSettingsUnchanged:before===JSON.stringify(after.guard.providers),
       receivedHeartbeat:body.includes(': model guard is verifying')};
     // Never save raw upstream output, reasoning, auth, or probe samples.
-    fs.writeFileSync(path.join(__dirname,'.runtime','guard-live-protected-verification.json'),JSON.stringify(result,null,2)+'\n');
+    fs.writeFileSync(path.join(__dirname,'..','.runtime','guard-live-protected-verification.json'),JSON.stringify(result,null,2)+'\n');
     console.log(JSON.stringify(result,null,2));
     if(!result.verifiedCompletion||!result.productionGuardSettingsUnchanged)process.exitCode=1;
   } finally {

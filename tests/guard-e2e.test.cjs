@@ -9,10 +9,10 @@ const path = require('node:path');
 const http = require('node:http');
 const {once} = require('node:events');
 const {DatabaseSync} = require('node:sqlite');
-const {makeProxy} = require('./proxy.cjs');
-const {createGuardService} = require('./guard-service.cjs');
-const {createGuard} = require('./guard.cjs');
-const {createManagement} = require('./management.cjs');
+const {makeProxy} = require('../src/proxy.cjs');
+const {createGuardService} = require('../src/guard-service.cjs');
+const {createGuard} = require('../src/guard.cjs');
+const {createManagement} = require('../src/management.cjs');
 
 const requested = 'gpt-6-astra', alternate = 'gpt-6-luna';
 const numbers = Array.from({length:300},(_,i)=>i+1).join(',');

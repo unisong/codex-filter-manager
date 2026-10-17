@@ -15,7 +15,7 @@ $ErrorActionPreference = 'Stop'
 $allowDownload = $Action -in @('Start', 'Run')
 $nodePath = & { param($entryPath, $download) . $entryPath; Get-FilterNode -NoDownload:(-not $download) } (Join-Path $PSScriptRoot 'start.ps1') $allowDownload
 if ($Action -eq 'Test') {
-    & $nodePath --test (Join-Path $PSScriptRoot 'filter.test.cjs') (Join-Path $PSScriptRoot 'legacy-model-alias.test.cjs') (Join-Path $PSScriptRoot 'management.test.cjs')
+    & $nodePath --test (Join-Path $PSScriptRoot 'tests\filter.test.cjs') (Join-Path $PSScriptRoot 'tests\legacy-model-alias.test.cjs') (Join-Path $PSScriptRoot 'tests\management.test.cjs')
 } else {
     $operation = $Action.ToLowerInvariant()
     if ($Action -eq 'Run') { $operation = 'serve' }
