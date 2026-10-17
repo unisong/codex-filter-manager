@@ -1,0 +1,8 @@
+{
+  "source": "https://github.com/unisong/magpie-codex-history-filter",
+  "version": "0.1.1-local",
+  "sha256": "ccdf7361d95d21a0a03f2a39492388754955e993f8adade144850d3824a556ca",
+  "changes": [
+    "History hook copied without modification. Combined entry renames its exported function only. Native settings page retains the official Magpie options bridge."
+  ]
+}

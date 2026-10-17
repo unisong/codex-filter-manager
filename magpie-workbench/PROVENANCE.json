@@ -1,0 +1,21 @@
+{
+  "source": "https://github.com/unisong/codex-filter-manager",
+  "commit": "40f98308f364ca8533c30c11a2cede4ea00542f3",
+  "version": "v1.0.5",
+  "license": "MIT",
+  "files": {
+    "magpie-plugin/history-filter.mjs": {
+      "sha256": "45d969daf0a6185fba2cbf8b76910d7bcb63e012d4767c46863b520f17c80925"
+    },
+    "magpie-plugin/history.middleware.js": {
+      "sha256": "b4da0d27961861904ba8577633717c6e14c36e78508ff95074fa24fb98d76a06"
+    }
+  },
+  "changes": [
+    "Inlined the shared history algorithm and request hook into one import-free middleware file.",
+    "Removed helper exports; only onRequest is exported.",
+    "This provenance describes only the original codex-history.middleware.js, which remains unchanged. It does not describe the combined workbench entry.",
+    "The v0.2.0 workbench composes this original hook with optional model monitoring and protection. See history/PROVENANCE.json and vendor/modeltrace/PROVENANCE.json for the combined distribution sources.",
+    "A native Magpie settings page and an optional read-only diagnostic tool are maintained separately from the unchanged history algorithm."
+  ]
+}

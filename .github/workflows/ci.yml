@@ -12,6 +12,10 @@ jobs:
           node-version: '24'
       - name: Node tests (isolated temporary fixtures)
         run: npm test
+      - name: Magpie full workbench tests (no supplier requests)
+        run: |
+          node magpie-workbench/tools/build-middleware.mjs
+          node --test magpie-workbench/test/*.test.mjs
       - name: Public source checks
         run: npm run release:check
       - name: Windows launcher checks (temporary configuration only)
@@ -29,3 +33,4 @@ jobs:
           python tests/dashboard-check.py
           python tests/guard-dashboard-check.py
           python tests/magpie-dashboard-check.py
+          python magpie-workbench/test/web-check.py

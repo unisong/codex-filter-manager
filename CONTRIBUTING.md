@@ -18,6 +18,7 @@ CC Switch 模式启动会接管当前用户的 Codex 配置；Magpie 模式安�
 | `src/magpie.cjs` | Magpie 只读供应商发现、请求路由与隔离规则 |
 | `src/magpie-plugin-store.cjs` | 维护 Magpie 中本工具的插件条目与管理页规则 |
 | `magpie-plugin/` | 原生请求钩子及与独立代理共用的历史清理算法 |
+| `magpie-workbench/` | 完整 Magpie 本地工作台源码、原生设置页、本机后台和独立离线测试 |
 | `src/proxy.cjs` | HTTP/SSE 转发、历史清理、429 重试 |
 | `src/management.cjs` | 本机管理 API、规则与页面 |
 | `src/diagnostics.cjs` | 字段白名单日志、运行中轮转、脱敏诊断报告 |
@@ -63,6 +64,8 @@ powershell -File .\start.ps1 -Action Diagnose -Runtime "D:\FilterData" -Config "
 诊断不会启动服务或改写配置；需要已安装 Node.js 24+ 或启动器缓存的便携运行时。报告写入所选运行目录的 `reports/`。启动器的 `ExecutionPolicy Bypass` 仅作用于当前进程，不修改系统执行策略。
 
 ## 本地验证
+
+版本与社区同步规则见 [维护关系](docs/MAINTENANCE.md)。修改完整工作台时还需执行 `node --test magpie-workbench/test/*.test.mjs`；重建公开钩子只在源码目录运行，不能覆盖已安装工作台中的运行中生成文件。
 
 ```powershell
 npm test

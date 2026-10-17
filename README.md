@@ -11,10 +11,13 @@
 | 使用环境 | 建议入口 | 模型检测与保护 |
 | --- | --- | --- |
 | CC Switch | 本仓库的一键启动服务 | 手动检测、请求前检测、异常锁定及响应验证 |
-| Magpie，希望在其内管理插件 | [Magpie Codex 工作台](https://github.com/unisong/magpie-codex-history-filter) | 合并插件提供可选手动检测、定期观测与异常暂停 |
+| Magpie，希望在其内管理全功能插件 | 本仓库的 [Magpie 本地工作台](magpie-workbench/README.md) | 可选手动检测、定期观测与异常暂停 |
 | Magpie，继续使用本仓库管理页 | 本服务附带的历史过滤钩子 | 手动检测与记录；不支持自动切断或 Lite 标头修改 |
+| Magpie，只需要社区纯过滤插件 | [magpie-codex-history-filter](https://github.com/unisong/magpie-codex-history-filter) | 无 UI、工作台、检测或保护，通过宿主 Options 设置 |
 
-两种 Magpie 安装方式请选择一种，避免同时启用重复过滤。**本仓库的附带钩子与 Magpie 合并插件功能不同**，配置方法见 [Magpie 适配说明](docs/MAGPIE.md)。
+Magpie 过滤入口请选择一种，避免同时启用重复过滤。本服务默认根据当前 Codex 网关配置自动识别 CC Switch / Magpie；完整 Magpie 工作台暂需单独加载。**本仓库的附带钩子与完整工作台功能不同**，配置方法见 [Magpie 适配说明](docs/MAGPIE.md)。
+
+全功能和 UI 后续统一在本仓库开发；社区插件仓库只同步纯过滤子集，两条版本独立递增。详见 [维护与发布关系](docs/MAINTENANCE.md)。
 
 ## 点击即用
 

@@ -1,6 +1,8 @@
 * text=auto
 *.cjs text eol=lf
 *.mjs text eol=lf
+*.js text eol=lf
+*.css text eol=lf
 *.py text eol=lf
 *.md text eol=lf
 *.json text eol=lf
@@ -14,3 +16,6 @@
 *.ico binary
 # Preserve the vendored bytes exactly: runtime SHA-256 pins include line endings.
 vendor/modeltrace/* -text whitespace=cr-at-eol
+magpie-workbench/vendor/modeltrace/* -text whitespace=cr-at-eol
+magpie-workbench/codex-history.middleware.js -text
+magpie-workbench/history/codex-history.middleware.js -text

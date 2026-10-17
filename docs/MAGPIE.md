@@ -1,6 +1,6 @@
 # Magpie 适配说明
 
-本文说明 **Codex Filter Manager 独立服务附带的 Magpie 历史过滤钩子**，不是 [Magpie Codex 合并工作台插件](https://github.com/unisong/magpie-codex-history-filter)。两种安装方式不要重复启用。合并插件的原生设置页、定期检测与异常暂停以其 README 为准。
+本文说明 **Codex Filter Manager 独立服务附带的 Magpie 历史过滤钩子**。完整 [Magpie 本地工作台](../magpie-workbench/README.md) 也在本仓库维护，其原生设置页、定期检测与异常暂停以工作台说明为准。[社区插件仓库](https://github.com/unisong/magpie-codex-history-filter) 只提供纯过滤中间件，不含 UI 或检测。三种过滤入口不要重复启用，维护关系见 [MAINTENANCE.md](MAINTENANCE.md)。
 
 本模式使用原生请求中间件：`Codex → Magpie :3425 → 历史过滤插件 → 供应商`。管理页在 `http://127.0.0.1:18181/__codex_filter__/ui`，负责规则设置和手动指纹检测；附带钩子本身没有原生设置页。它不改写 Codex 的 `base_url`，也不修改 Magpie 供应商、密钥或模型选择。已在 Magpie 0.1.1265 验证原生钩子；其他版本需核对接口兼容性。
 
