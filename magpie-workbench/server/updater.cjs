@@ -51,10 +51,26 @@ async function download(url, maxBytes, fetcher, {timeout = 30000, accept = 'appl
 }
 function launch(script, plan) {
   return new Promise((resolve, reject) => {
-    const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
-      '-File', script, '-Plan', plan], {detached: true, windowsHide: true, stdio: 'ignore'});
+    // Windows PowerShell can silently skip -File under DETACHED_PROCESS. Let a
+    // short-lived PowerShell bootstrap launch the independent, hidden helper.
+    // Paths travel through environment variables, never interpolated shell code.
+    const bootstrap = `$ErrorActionPreference = 'Stop'
+$env:PSModulePath = Join-Path $PSHOME 'Modules'
+$helperScript = $env:CODEX_FILTER_UPDATE_SCRIPT
+$helperPlan = $env:CODEX_FILTER_UPDATE_PLAN
+if ($helperScript.Contains('"') -or $helperPlan.Contains('"')) { throw 'Invalid helper path.' }
+$helperArgs = @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',('"'+$helperScript+'"'),'-Plan',('"'+$helperPlan+'"'))
+$helperProcess = Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -WindowStyle Hidden -ArgumentList $helperArgs -PassThru
+Write-Output $helperProcess.Id`;
+    const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(bootstrap, 'utf16le').toString('base64')], {
+      windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], timeout: 15000,
+      env: {...process.env, CODEX_FILTER_UPDATE_SCRIPT: script, CODEX_FILTER_UPDATE_PLAN: plan}});
+    let output = '', errors = '';
+    child.stdout.on('data', chunk => { output = (output + chunk).slice(-16384); });
+    child.stderr.on('data', chunk => { errors = (errors + chunk).slice(-16384); });
     child.once('error', reject);
-    child.once('spawn', () => { child.unref(); resolve(); });
+    child.once('close', code => code === 0 && /^\d+$/.test(output.trim()) ? resolve()
+      : reject(Error('无法启动更新助手，请检查 PowerShell 权限。' + (errors ? ' ' + errors.trim() : ''))));
   });
 }
 function createUpdater({root, directory, currentVersion, mode = 'ccswitch', helper, restart,

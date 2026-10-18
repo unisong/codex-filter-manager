@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 import zipfile
 
 root = Path(__file__).resolve().parent.parent
@@ -23,9 +24,9 @@ required = ['src/filter.cjs', 'scripts/windows/start.ps1', 'web/dashboard.html',
             'magpie-workbench/plugin/index.mjs', 'magpie-workbench/workbench.middleware.js']
 
 with tempfile.TemporaryDirectory(prefix='filter-update-install-') as scratch:
-    for scenario in ['install', 'rollback', 'traversal', 'checksum', 'magpie']:
+    for scenario in ['install', 'background', 'rollback', 'traversal', 'checksum', 'magpie']:
         base = Path(scratch) / scenario
-        install = base / 'installed'
+        install = base / 'installed space \u4e2d\u6587'
         data = install / '.runtime'
         job = data / 'updates' / 'offline-job'
         job.mkdir(parents=True)
@@ -53,15 +54,50 @@ with tempfile.TemporaryDirectory(prefix='filter-update-install-') as scratch:
             plan['sha256'] = '0' * 64
         plan_file = job / 'plan.json'
         plan_file.write_text(json.dumps(plan), encoding='utf-8')
-        process = subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
-                                  '-File', str(helper), '-Plan', str(plan_file)], capture_output=True, text=True,
-                                 timeout=60, creationflags=subprocess.CREATE_NO_WINDOW)
+        if scenario == 'background':
+            # Exercise the production launcher, including parent exit. A direct
+            # PowerShell invocation cannot detect broken detached spawn flags.
+            script = r'''
+const fs=require('node:fs'),path=require('node:path');
+const {createUpdater}=require(process.argv[1]);
+const plan=JSON.parse(fs.readFileSync(process.argv[2]));
+const name='codex-filter-manager-v1.2.0-windows.zip', bytes=fs.readFileSync(plan.archive);
+const asset=n=>({name:n,size:bytes.length,browser_download_url:'https://github.com/unisong/codex-filter-manager/releases/download/v1.2.0/'+n});
+(async()=>{
+ const updater=createUpdater({root:plan.root,directory:path.dirname(plan.resultFile),currentVersion:'1.0.9',
+  helper:process.argv[3],restart:[],fetcher:async url=>new Response(url.includes('api.github.com')
+   ? JSON.stringify([{tag_name:'v1.2.0',assets:[asset(name),asset('SHA256SUMS.txt')]}])
+   : url.endsWith('SHA256SUMS.txt')?plan.sha256+'  '+name:bytes)});
+ await updater.check();updater.install('v1.2.0');await updater.settle();
+ if(updater.snapshot().error)throw Error(updater.snapshot().error);
+})().catch(e=>{console.error(e.message);process.exitCode=1});
+'''
+            command = [node, '-e', script, str(root / 'src/updater.cjs'), str(plan_file), str(helper)]
+        else:
+            command = ['powershell.exe', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+                       '-File', str(helper), '-Plan', str(plan_file)]
+        process = subprocess.run(command, capture_output=True, text=True, timeout=60,
+                                 creationflags=subprocess.CREATE_NO_WINDOW)
+        if scenario == 'background':
+            assert process.returncode == 0, process.stderr
+            deadline = time.monotonic() + 20
+            while time.monotonic() < deadline:
+                try:
+                    if json.loads(result.read_text(encoding='utf-8'))['phase'] in ['installed', 'failed']:
+                        # Terminal state is written immediately before the helper
+                        # releases its lock. Wait before cleaning the fixture.
+                        with (data / 'update.lock').open('rb'):
+                            break
+                except (FileNotFoundError, PermissionError):
+                    pass
+                time.sleep(0.1)
         output = json.loads(result.read_text(encoding='utf-8'))
         assert (data / 'provider-rules.json').read_bytes() == private_bytes
-        if scenario == 'install':
+        if scenario in ['install', 'background']:
             assert process.returncode == 0 and output['phase'] == 'installed', output
             assert json.loads((install / 'package.json').read_text())['version'] == '1.2.0'
-            assert (job / 'backup/filter.cjs').read_text() == old_entry
+            backups = list((data / 'updates').glob('*/backup/filter.cjs'))
+            assert len(backups) == 1 and backups[0].read_text() == old_entry
         elif scenario == 'magpie':
             assert process.returncode == 0 and output['phase'] == 'ready', output
             assert Path(output['target']).is_dir()

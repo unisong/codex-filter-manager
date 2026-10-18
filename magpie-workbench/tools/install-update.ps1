@@ -24,7 +24,9 @@ function Write-Result([string]$Phase, [string]$Message, [string]$Target = '') {
     $data = @{phase=$Phase; message=$Message; tag=$updatePlan.tag; target=$Target; at=[DateTime]::UtcNow.ToString('o')} | ConvertTo-Json -Compress
     $tempResult = $updatePlan.resultFile + '.tmp'
     [IO.File]::WriteAllText($tempResult, $data, (New-Object Text.UTF8Encoding($false)))
-    Move-Item -LiteralPath $tempResult -Destination $updatePlan.resultFile -Force
+    if (Test-Path -LiteralPath $updatePlan.resultFile) {
+        [IO.File]::Replace($tempResult, $updatePlan.resultFile, [System.Management.Automation.Language.NullString]::Value)
+    } else { [IO.File]::Move($tempResult, $updatePlan.resultFile) }
 }
 function Invoke-Service([string]$Operation) {
     $arguments = @((Join-Path $installRoot 'filter.cjs'), $Operation) + @($updatePlan.restart)

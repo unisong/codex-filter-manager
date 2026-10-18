@@ -1,6 +1,6 @@
 {
   "name": "codex-filter-manager",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "private": true,
   "description": "Local CC Switch / Magpie / Codex history compatibility and model fingerprint protection manager",
   "license": "MIT",

@@ -4,7 +4,7 @@
 
 **Windows 10 / 11 · 无需管理员权限 · 首次启动自动准备 Node.js · MIT**
 
-当前版本：**v1.0.10 / 服务 v35**。[下载最新版](https://github.com/unisong/codex-filter-manager/releases/latest) · [更新记录](docs/CHANGELOG.md) · [问题反馈](https://github.com/unisong/codex-filter-manager/issues)
+当前版本：**v1.0.11 / 服务 v36**。[下载最新版](https://github.com/unisong/codex-filter-manager/releases/latest) · [更新记录](docs/CHANGELOG.md) · [问题反馈](https://github.com/unisong/codex-filter-manager/issues)
 
 ## 两种版本
 
