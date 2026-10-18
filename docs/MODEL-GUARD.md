@@ -15,7 +15,7 @@
 | [ModelTrace](https://github.com/xqy2006/ModelTrace) | 一轮 3 个数字序列请求；强差异时增加一轮 | 采用 MIT 评分核心与参考库，便于在请求前执行有限样本检查 |
 | [meow-llm-detector](https://github.com/chen-006/meow-llm-detector) | 通常 32 / 64 / 128 个短请求，项目推荐 128 | 仅调研；样本规模较大，且采用 PolyForm Noncommercial，未复制其代码、数据或接入接口 |
 
-原项目的回测或模拟准确率不能直接当成当前供应商的检测准确率。[第三方来源和许可](THIRD_PARTY_NOTICES.md) · [固定文件来源与校验值](vendor/modeltrace/provenance.json)
+原项目的回测或模拟准确率不能直接当成当前供应商的检测准确率。[第三方来源和许可](../THIRD_PARTY_NOTICES.md) · [固定文件来源与校验值](../vendor/modeltrace/provenance.json)
 
 ## 检测的具体内容与费用
 

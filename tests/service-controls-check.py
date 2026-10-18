@@ -41,20 +41,30 @@ with tempfile.TemporaryDirectory(prefix='filter-controls-ui-') as scratch:
                 errors = []
                 page.on('pageerror', lambda e: errors.append(str(e)))
                 state = dict(currentVersion='1.0.9', releases=[], phase='idle', checkedAt=None,
-                             mode=mode, canInstall=True, installReason='', error=None)
+                             progress=None, mode=mode, canInstall=True, installReason='', error=None)
                 checks = []
+                download_finished = False
+                install_finished = False
                 def update(route):
                     url = route.request.url
+                    if route.request.method == 'GET' and state['phase'] == 'downloading' and download_finished:
+                        state.update(phase='idle', progress={'kind': 'verify', 'received': 12000, 'total': 12000, 'percent': 100},
+                                     result={'phase': 'installing', 'tag': 'v1.10.0'})
+                    if route.request.method == 'GET' and install_finished:
+                        state.update(progress=None,
+                                     result={'phase': 'ready', 'tag': 'v1.10.0', 'target': r'C:\Demo\new-version\magpie-workbench'}
+                                     if mode == 'magpie' else {'phase': 'failed', 'tag': 'v1.10.0', 'message': 'SHA-256 mismatch'})
                     if url.endswith('/check'):
                         checks.append('check')
                         state.update(phase='checking')
                     elif url.endswith('/install'):
-                        state.update(phase='idle', result={'phase': 'ready', 'tag': 'v1.2.0', 'target': r'C:\Demo\new-version\magpie-workbench'}
-                                     if mode == 'magpie' else {'phase': 'failed', 'tag': 'v1.2.0', 'message': 'SHA-256 mismatch'})
+                        state.update(phase='downloading', progress={'kind': 'archive', 'received': 5040, 'total': 12000, 'percent': 42})
                     elif state['phase'] == 'checking':
-                        state.update(phase='idle', checkedAt='2026-10-18T00:00:00Z', releases=[{
-                            'tag': 'v1.2.0', 'notes': '演示更新说明 <script>neverExecute()</script>', 'size': 12000,
-                            'page': 'https://github.com/unisong/codex-filter-manager/releases/tag/v1.2.0'}])
+                        state.update(phase='idle', checkedAt='2026-10-18T00:00:00Z', releases=[
+                            {'tag': 'v1.2.0', 'notes': '旧版本说明', 'size': 12000,
+                             'page': 'https://github.com/unisong/codex-filter-manager/releases/tag/v1.2.0'},
+                            {'tag': 'v1.10.0', 'notes': '演示更新说明 <script>neverExecute()</script>', 'size': 12000,
+                             'page': 'https://github.com/unisong/codex-filter-manager/releases/tag/v1.10.0'}])
                     route.fulfill(json=state)
                 page.route('**/api/updates**', update)
                 page.goto(urls[mode])
@@ -64,7 +74,8 @@ with tempfile.TemporaryDirectory(prefix='filter-controls-ui-') as scratch:
                 assert not checks, 'Opening settings must not contact GitHub'
                 page.locator('#checkUpdates').click()
                 expect(page.locator('#checkUpdates')).to_have_text('正在检查…')
-                expect(page.locator('#updateVersion')).to_have_value('v1.2.0', timeout=7000)
+                expect(page.locator('#updateVersion')).to_have_value('v1.10.0', timeout=7000)
+                expect(page.locator('#updateVersion option').first).to_have_text('v1.10.0 · 最新')
                 if os.environ.get('UI_ARTIFACT_DIR'):
                     output = Path(os.environ['UI_ARTIFACT_DIR'])
                     output.mkdir(parents=True, exist_ok=True)
@@ -77,6 +88,23 @@ with tempfile.TemporaryDirectory(prefix='filter-controls-ui-') as scratch:
                 assert 'result' not in state
                 page.locator('#installUpdate').click()
                 page.locator('#serviceConfirm button[value=ok]').click()
+                expect(page.locator('#updateProgressWrap')).to_be_visible()
+                expect(page.locator('#updateProgress')).to_have_attribute('value', '42')
+                expect(page.locator('#updateProgressValue')).to_have_text('42%')
+                expect(page.locator('#stopService')).to_be_disabled()
+                expect(page.locator('#installUpdate')).to_be_disabled()
+                if os.environ.get('UI_ARTIFACT_DIR'):
+                    page.screenshot(path=str(output / (mode + '-download-progress.png')), full_page=True)
+                # Reopening the settings page during a download must recover its live progress.
+                page.reload()
+                expect(page.locator('#filters' if mode == 'magpie' else '#providersView')).to_be_visible()
+                page.locator('#viewSettings' if mode == 'ccswitch' else '[data-view=settings]').click()
+                expect(page.locator('#updateProgressValue')).to_have_text('42%')
+                download_finished = True
+                expect(page.locator('#updateProgressLabel')).to_contain_text('正在解压')
+                expect(page.locator('#updateProgressValue')).to_have_text('进行中')
+                expect(page.locator('#updateProgress')).not_to_have_attribute('value', '100')
+                install_finished = True
                 expect(page.locator('#updateResult')).to_contain_text('已下载' if mode == 'magpie' else '更新未完成')
                 for dark in [False, True]:
                     if dark:

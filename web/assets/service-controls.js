@@ -24,6 +24,13 @@
     head.append(title, check);
     const summary = el('p', '正在读取本机版本…', 'service-update-status');
     summary.id = 'updateStatus'; summary.setAttribute('role', 'status'); summary.setAttribute('aria-live', 'polite');
+    const progressWrap = el('div', '', 'service-update-progress'); progressWrap.id = 'updateProgressWrap'; progressWrap.hidden = true;
+    const progressHead = el('div', '', 'service-update-progress-head');
+    const progressLabel = el('span', '准备下载…'); progressLabel.id = 'updateProgressLabel';
+    const progressValue = el('span', ''); progressValue.id = 'updateProgressValue';
+    const progress = el('progress'); progress.id = 'updateProgress'; progress.max = 100;
+    progress.setAttribute('aria-labelledby', 'updateProgressLabel');
+    progressHead.append(progressLabel, progressValue); progressWrap.append(progressHead, progress);
     const description = el('p', magpie
       ? '手动检查 GitHub 正式版本。新版下载并校验后，在 Magpie 切换插件目录；不会覆盖运行中的插件。'
       : '手动检查 GitHub 正式版本。安装前备份程序文件，保留本机规则与记录；安装后自动重启过滤服务。', 'muted');
@@ -41,7 +48,7 @@
     const readyPath = el('input'); readyPath.readOnly = true; readyPath.setAttribute('aria-label', '新版 Magpie 插件目录');
     readyPath.onclick = () => readyPath.select();
     ready.append(el('p', '新版已准备好。在 Magpie 中将本地插件目录切换为下方路径，然后重新加载。模型设置与记录继续使用原来的本机数据目录。'), readyPath);
-    panel.append(head, description, summary, row, reason, notes, result, ready); settings.prepend(panel);
+    panel.append(head, description, summary, progressWrap, row, reason, notes, result, ready); settings.prepend(panel);
     const dialog = el('dialog', '', 'service-confirm'); dialog.id = 'serviceConfirm';
     const form = el('form'); form.method = 'dialog';
     const heading = el('h2'), message = el('p'), actions = el('div', '', 'service-update-actions');
@@ -57,24 +64,35 @@
     const busy = () => state && (['checking', 'downloading'].includes(state.phase) || state.result?.phase === 'installing');
     const showSelection = () => {
       const release = state?.releases.find(r => r.tag === select.value);
-      notes.hidden = !release; noteText.textContent = release?.notes || '此版本没有附加说明。';
+      notes.hidden = !release;
+      const text = release?.notes || '此版本没有附加说明。';
+      if (noteText.textContent !== text) noteText.textContent = text;
+      if (noteText.dataset.tag !== select.value) noteText.scrollTop = 0;
+      noteText.dataset.tag = select.value;
       if (release) link.href = release.page;
     };
     function render(value) {
       state = value;
       const selected = select.value;
-      select.replaceChildren(...state.releases.map(r => {
-        const option = el('option', r.tag + (r === state.releases[0] ? ' · 最新' : ''));
+      const sortedReleases = [...state.releases].sort((a, b) => {
+        const parse = tag => (String(tag).match(/^v(\d+)\.(\d+)\.(\d+)$/) || []).slice(1).map(Number);
+        const aa = parse(a.tag), bb = parse(b.tag);
+        if (aa.length !== 3 || bb.length !== 3) return String(b.tag).localeCompare(String(a.tag), undefined, {numeric: true});
+        for (let i = 0; i < 3; i++) if (aa[i] !== bb[i]) return bb[i] - aa[i];
+        return 0;
+      });
+      select.replaceChildren(...sortedReleases.map(r => {
+        const option = el('option', r.tag + (r === sortedReleases[0] ? ' · 最新' : ''));
         option.value = r.tag; return option;
       }));
-      if (state.releases.some(r => r.tag === selected)) select.value = selected;
+      if (sortedReleases.some(r => r.tag === selected)) select.value = selected;
       const active = busy();
       check.disabled = active; check.textContent = state.phase === 'checking' ? '正在检查…' : '检查更新';
       check.setAttribute('aria-busy', String(state.phase === 'checking'));
       stop.disabled = active; select.disabled = active; install.disabled = active || !state.canInstall || !state.releases.length;
       row.hidden = !state.releases.length; reason.textContent = state.installReason;
       summary.textContent = `当前 v${state.currentVersion} · ` + (state.phase === 'checking' ? '正在连接 GitHub…'
-        : state.phase === 'downloading' ? '正在下载并校验发布包…'
+        : state.phase === 'downloading' ? '正在下载发布包…'
         : state.result?.phase === 'installing' ? '正在准备安装，请勿重复启动或关闭…'
         : state.error || (!state.checkedAt ? '尚未检查' : state.releases.length ? `发现 ${state.releases.length} 个可更新版本` : '未发现可安装的正式更新'));
       panel.dataset.error = String(!!state.error || state.result?.phase === 'failed');
@@ -83,9 +101,22 @@
         : r?.phase === 'ready' ? `${r.tag} 已下载并通过校验。`
         : r?.phase === 'failed' ? '更新未完成：' + r.message : '';
       ready.hidden = r?.phase !== 'ready'; readyPath.value = r?.target || '';
+      const p = state.progress;
+      const installing = r?.phase === 'installing';
+      progressWrap.hidden = !(state.phase === 'downloading' || installing);
+      if (!progressWrap.hidden) {
+        const kind = installing ? '准备更新' : p?.kind === 'checksum' ? '获取校验文件' : p?.kind === 'verify' ? '校验发布包' : '下载发布包';
+        const receivedMb = Number.isFinite(p?.received) ? (p.received / 1048576).toFixed(1) : null;
+        const totalMb = Number.isFinite(p?.total) ? (p.total / 1048576).toFixed(1) : null;
+        progressLabel.textContent = installing ? '正在解压、校验并准备安装…'
+          : kind + (receivedMb !== null ? ` ${receivedMb}${totalMb !== null ? ' / ' + totalMb : ''} MB` : '…');
+        const percent = !installing && Number.isFinite(p?.percent) ? Math.max(0, Math.min(100, p.percent)) : null;
+        progressValue.textContent = percent === null ? '进行中' : percent + '%';
+        if (percent === null) progress.removeAttribute('value'); else progress.value = percent;
+      }
       showSelection();
       clearTimeout(timer);
-      if (active) timer = setTimeout(refresh, 1500);
+      if (active) timer = setTimeout(refresh, state.phase === 'downloading' ? 500 : 1500);
       else if (recovering) {
         // The service token changes across an in-place restart; reload the document for a new token.
         if (r?.phase === 'installed') location.reload();

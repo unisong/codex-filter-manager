@@ -7,7 +7,7 @@
     history: ['检测记录', '查看每轮取样结果与独立复测证据，最多保留最近 100 轮。'],
     settings: ['设置与诊断', '只连接本机 Magpie，查看运行状态并导出脱敏诊断。']
   };
-  let activeView = 'targets';
+  let activeView = 'filters';
   const H = globalThis.HistorySettings;
   let filterBase = null, filterDraft = null, filterProviders = [], filterBusy = false, filterEnabled = true, filterEnabledOnly = false;
   let scheduleBusy = false, connected = false;
@@ -198,7 +198,7 @@
          : activeView === 'settings' ? '重新检查' : '刷新状态';
        targets(); history(); settings(); renderMonitoring(); renderCurrentModel();
       if (loadModels) models = (await api('models')).models;
-      if (!currentSelection() && !$('targetDialog').dataset.offered && $('targetDialog').hidden) {
+      if (activeView === 'targets' && !currentSelection() && !$('targetDialog').dataset.offered && $('targetDialog').hidden) {
         $('targetDialog').dataset.offered = '1'; await editTarget();
       }
       if (detailId && $('detailDialog').open) {
@@ -319,7 +319,7 @@
     download('workbench-diagnostics.json', s);
   };
   function showView(view) {
-    activeView = pageMeta[view] ? view : 'targets';
+    activeView = pageMeta[view] ? view : 'filters';
     const meta = pageMeta[activeView];
     $('pageTitle').textContent = meta[0]; $('pageSubtitle').textContent = meta[1];
     document.querySelectorAll('.view').forEach(v => { v.hidden = v.id !== activeView; });
@@ -330,6 +330,10 @@
         : activeView === 'settings' ? '重新检查' : '刷新状态';
     }
     if (activeView === 'filters' && !filterBase) loadFilters().catch(e => notice(e.message, 'error'));
+    if (activeView === 'targets' && state && !currentSelection() && !$('targetDialog').dataset.offered && $('targetDialog').hidden) {
+      $('targetDialog').dataset.offered = '1';
+      editTarget().catch(e => notice(e.message, 'error'));
+    }
   }
   document.querySelectorAll('.nav').forEach(b => b.onclick = () => showView(b.dataset.view));
   function paintFilters() {
@@ -458,6 +462,7 @@
     try {
       const open = new URLSearchParams(location.hash.slice(1)).get('open');
       if (open) { window.history.replaceState(null, '', '/'); await api('session', {key: open}); }
+      showView(activeView);
       await refresh(true);
       window.ServiceControls?.mount({tools:document.querySelector('.workbench-top .actions'),settings:document.querySelector('#settings .settings-grid'),
         mode:'magpie',api:(route,body)=>api(route.slice(1),body)});

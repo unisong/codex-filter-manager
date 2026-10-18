@@ -64,6 +64,7 @@ with sync_playwright() as p:
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.route("**/*", route_request)
     page.goto("http://127.0.0.1:19997/")
+    page.locator('[data-view="targets"]').click()
     expect(page.locator("#monitoringStatus")).to_have_text("定期检测已开启 · 1 个模型")
     expect(page.locator("#monitoringDetail")).to_contain_text("任务结束后点右侧停止")
     observe = page.locator('article.target[data-id="observe"]')

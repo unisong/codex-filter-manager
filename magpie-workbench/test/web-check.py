@@ -35,6 +35,13 @@ with sync_playwright() as p:
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.route("**/*", route_request)
     page.goto("http://127.0.0.1:19998/")
+    expect(page.locator("#filters")).to_be_visible()
+    expect(page.locator("#targets")).to_be_hidden()
+    expect(page.locator('[data-view="filters"]')).to_have_class("nav active")
+    expect(page.locator("#pageTitle")).to_have_text("历史过滤")
+    page.locator('[data-view="targets"]').click()
+    expect(page.locator("#targets")).to_be_visible()
+    expect(page.locator("#filters")).to_be_hidden()
     expect(page.locator("#targetDialog")).to_be_visible()
     assert page.locator("#targetDialog").evaluate("e => e.tagName") == "SECTION"
     expect(page.locator("#currentCheck")).to_be_disabled()
@@ -63,7 +70,10 @@ with sync_playwright() as p:
     assert page.locator("#targets .notice").evaluate("e => getComputedStyle(e).backgroundColor") == "rgb(41, 38, 32)"
     page.reload()
     expect(page.locator("html")).to_have_attribute("data-theme", "dark")
+    expect(page.locator("#filters")).to_be_visible()
     expect(page.locator("#targetDialog")).to_be_hidden()
+    page.locator('[data-view="targets"]').click()
+    expect(page.locator("#targets")).to_be_visible()
     # History is used only when there is no business route to display.
     state["currentModel"] = None
     state["history"] = [{"id": "one", "model": "backup/gpt-6-luna", "expected": "gpt-6-luna", "effort": "low",

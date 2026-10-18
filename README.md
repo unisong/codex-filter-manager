@@ -4,7 +4,7 @@
 
 **Windows 10 / 11 · 无需管理员权限 · 首次启动自动准备 Node.js · MIT**
 
-当前版本：**v1.0.11 / 服务 v36**。[下载最新版](https://github.com/unisong/codex-filter-manager/releases/latest) · [更新记录](docs/CHANGELOG.md) · [问题反馈](https://github.com/unisong/codex-filter-manager/issues)
+当前版本：**v1.0.12 / 服务 v37**。[下载最新版](https://github.com/unisong/codex-filter-manager/releases/latest) · [更新记录](docs/CHANGELOG.md) · [问题反馈](https://github.com/unisong/codex-filter-manager/issues)
 
 ## 两种版本
 
@@ -58,7 +58,7 @@ magpie plugin add /path/to/codex-filter-manager/magpie-workbench
 
 ## 关闭与更新
 
-在 **设置与诊断 → 版本更新** 点击「检查更新」，选择比当前版本新的正式版本，查看说明后按需更新。打开页面不会自动检查、下载或安装，也不会调用模型。
+在 **设置与诊断 → 版本更新** 点击「检查更新」，版本按从新到旧排列，选择比当前版本新的正式版本，查看说明后按需更新。下载过程中显示字节进度与百分比。打开页面不会自动检查、下载或安装，也不会调用模型。
 
 | 环境 | 关闭按钮 | 更新方式 |
 | --- | --- | --- |
@@ -72,7 +72,7 @@ magpie plugin add /path/to/codex-filter-manager/magpie-workbench
 
 ## 界面
 
-界面按 **当前状态 → 主操作 → 配置列表 → 技术说明** 排列。左上角显示运行状态、版本和项目链接；右上角提供明暗切换、当前页面刷新和关闭入口。
+界面按 **当前状态 → 主操作 → 配置列表 → 技术说明** 排列。Magpie 工作台每次打开默认进入首栏「历史过滤」，模型监测需主动切换。左上角显示运行状态、版本和项目链接；右上角提供明暗切换、当前页面刷新和关闭入口。
 
 ![历史过滤](docs/images/providers.png)
 

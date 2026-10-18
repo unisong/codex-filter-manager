@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const {createHash} = require('node:crypto');
-const {createUpdater, selectReleases, checksum, newer} = require('../src/updater.cjs');
+const {createUpdater, selectReleases, checksum, newer, compareVersions} = require('../src/updater.cjs');
 const archive = Buffer.from('offline archive fixture');
 const digest = createHash('sha256').update(archive).digest('hex');
 function release(tag = 'v1.2.0', extra = {}) {
@@ -30,11 +30,44 @@ function setup(t, extra = {}) {
 }
 test('only newer stable releases with official complete assets are selectable', () => {
   const evil = release('v1.5.0'); evil.assets[0].browser_download_url = 'https://evil.example/payload.zip';
-  assert.deepEqual(selectReleases([release('v1.0.9'), release('v1.1.0'), release('v1.10.0'),
+  assert.deepEqual(selectReleases([release('v1.0.9'), release('v1.1.0'), release('v1.3.0'), release('v1.2.0'), release('v1.10.0'),
     release('v9.0.0', {draft: true}), release('v9.0.0', {prerelease: true}), evil,
-    release('v2.0.0', {assets: []}), release('v2.0.0;command')], '1.0.9').map(r => r.tag), ['v1.10.0', 'v1.1.0']);
+    release('v2.0.0', {assets: []}), release('v2.0.0;command')], '1.0.9').map(r => r.tag), ['v1.10.0', 'v1.3.0', 'v1.2.0', 'v1.1.0']);
   assert.equal(newer('v1.10.0', '1.9.0'), true); assert.equal(newer('v01.2.3', '1.0.0'), false);
+  assert.ok(compareVersions('v1.10.0', 'v1.9.9') > 0);
   assert.throws(() => checksum(`${digest} file.zip\n${digest} file.zip`, 'file.zip'), /唯一/);
+});
+test('download progress exposes byte counts and percentage before the installer starts', async t => {
+  let continueDownload, firstChunk;
+  const started = new Promise(resolve => { firstChunk = resolve; });
+  const remaining = new Promise(resolve => { continueDownload = resolve; });
+  const f = setup(t, {fetcher: async url => {
+    if (url.includes('api.github.com')) return new Response(JSON.stringify([release()]));
+    if (url.endsWith('SHA256SUMS.txt')) return new Response(`${digest}  codex-filter-manager-v1.2.0-windows.zip\n`);
+    const body = new ReadableStream({
+      async start(controller) {
+        controller.enqueue(archive.subarray(0, 9));
+        firstChunk();
+        await remaining;
+        controller.enqueue(archive.subarray(9)); controller.close();
+      }
+    });
+    return new Response(body, {headers: {'content-length': String(archive.length)}});
+  }});
+  await f.updater.check();
+  f.updater.install('v1.2.0');
+  await started;
+  await new Promise(resolve => setImmediate(resolve));
+  const live = f.updater.snapshot();
+  assert.equal(live.phase, 'downloading');
+  assert.equal(live.progress.kind, 'archive');
+  assert.equal(live.progress.total, archive.length);
+  assert.ok(live.progress.received > 0 && live.progress.received < archive.length);
+  assert.ok(live.progress.percent > 0 && live.progress.percent < 100);
+  continueDownload();
+  await f.updater.settle();
+  assert.equal(f.spawned.length, 1);
+  assert.equal(f.updater.snapshot().result.phase, 'installing');
 });
 test('reading update state is offline; verified download creates a structured plan without shell interpolation', async t => {
   const f = setup(t); f.updater.snapshot(); assert.equal(f.calls.length, 0);

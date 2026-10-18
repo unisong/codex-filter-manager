@@ -41,6 +41,7 @@ with sync_playwright() as p:
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.route("**/*", route_request)
     page.goto("http://127.0.0.1:19998/")
+    page.locator('[data-view="targets"]').click()
     assert page.locator("#interval option").evaluate_all("xs => xs.map(x => x.value)") == [
         "5", "10", "20", "30", "60", "custom"]
     for minutes in (5, 20, 17):
@@ -59,6 +60,7 @@ with sync_playwright() as p:
         expect(page.locator("#targetDialog")).to_be_hidden()
         assert target["intervalMinutes"] == minutes
     page.reload()
+    page.locator('[data-view="targets"]').click()
     page.locator("#add").click()
     expect(page.locator("#interval")).to_have_value("custom")
     expect(page.locator("#customInterval")).to_have_value("17")

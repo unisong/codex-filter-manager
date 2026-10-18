@@ -8,12 +8,16 @@ const {spawn} = require('node:child_process');
 const REPOSITORY = 'unisong/codex-filter-manager';
 const RELEASES = `https://api.github.com/repos/${REPOSITORY}/releases?per_page=30`;
 const versionParts = value => /^(?:v)?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(value)?.slice(1).map(Number);
-function newer(a, b) {
+function compareVersions(a, b) {
   const aa = versionParts(a), bb = versionParts(b);
-  if (!aa || !bb) return false;
-  for (let i = 0; i < 3; i++) if (aa[i] !== bb[i]) return aa[i] > bb[i];
-  return false;
+  if (!aa || !bb) return 0;
+  for (let i = 0; i < 3; i++) if (aa[i] !== bb[i]) return aa[i] - bb[i];
+  return 0;
 }
+function newer(a, b) {
+  return compareVersions(a, b) > 0;
+}
+const newestFirst = (a, b) => compareVersions(b.tag, a.tag);
 function releaseURL(value, tag, name) {
   return value === `https://github.com/${REPOSITORY}/releases/download/${tag}/${name}`;
 }
@@ -27,7 +31,7 @@ function selectReleases(data, current) {
     if (!zip || !sums || !Number.isSafeInteger(zip.size) || zip.size <= 0 || zip.size > 128 * 1024 * 1024) return null;
     return {tag: r.tag_name, name, size: zip.size, url: zip.browser_download_url, sums: sums.browser_download_url,
       notes: String(r.body || '').slice(0, 12000), page: `https://github.com/${REPOSITORY}/releases/tag/${r.tag_name}`};
-  }).filter(Boolean).sort((a, b) => newer(a.tag, b.tag) ? -1 : 1);
+  }).filter(Boolean).sort(newestFirst);
 }
 function checksum(text, name) {
   const entries = text.split(/\r?\n/).map(line => /^([a-f\d]{64})\s+\*?(.+)$/i.exec(line));
@@ -35,18 +39,23 @@ function checksum(text, name) {
   if (matches.length !== 1) throw Error('发布包缺少唯一的 SHA-256 校验值。');
   return matches[0][1].toLowerCase();
 }
-async function download(url, maxBytes, fetcher, {timeout = 30000, accept = 'application/octet-stream'} = {}) {
+async function download(url, maxBytes, fetcher, {timeout = 30000, accept = 'application/octet-stream', onProgress} = {}) {
   const response = await fetcher(url, {headers: {'User-Agent': 'codex-filter-manager-updater', Accept: accept},
     signal: AbortSignal.timeout(timeout)});
   if (!response.ok) throw Error(response.status === 403 || response.status === 429
     ? 'GitHub 暂时限制请求，请稍后重试。' : `下载失败（HTTP ${response.status}），请稍后重试。`);
-  if (Number(response.headers.get('content-length')) > maxBytes) throw Error('下载超过大小限制。');
+  const announced = Number(response.headers.get('content-length'));
+  const total = Number.isSafeInteger(announced) && announced > 0 ? announced : null;
+  if (total > maxBytes) throw Error('下载超过大小限制。');
   const chunks = []; let size = 0;
+  onProgress?.({received: 0, total});
   for await (const chunk of response.body) {
     size += chunk.length;
     if (size > maxBytes) throw Error('下载超过大小限制。');
     chunks.push(chunk);
+    onProgress?.({received: size, total});
   }
+  onProgress?.({received: size, total: total || size});
   return Buffer.concat(chunks);
 }
 function launch(script, plan) {
@@ -77,7 +86,7 @@ function createUpdater({root, directory, currentVersion, mode = 'ccswitch', help
   fetcher = fetch, platform = process.platform, spawnHelper = launch, now = Date.now}) {
   let releases = [], checking = null, working = null;
   const resultFile = path.join(directory, 'update-result.json');
-  let state = {currentVersion, checkedAt: null, phase: 'idle', error: null};
+  let state = {currentVersion, checkedAt: null, phase: 'idle', progress: null, error: null};
   function snapshot() {
     let result;
     try { result = JSON.parse(fs.readFileSync(resultFile, 'utf8')); } catch {}
@@ -86,7 +95,7 @@ function createUpdater({root, directory, currentVersion, mode = 'ccswitch', help
     }
     const supported = platform === 'win32';
     const sourceCheckout = fs.existsSync(path.join(root, '.git')) || (mode === 'magpie' && fs.existsSync(path.join(root, '..', '.git')));
-    return {...state, mode, releases: releases.map(({tag, notes, size, page}) => ({tag, notes, size, page})),
+    return {...state, mode, releases: [...releases].sort(newestFirst).map(({tag, notes, size, page}) => ({tag, notes, size, page})),
       canInstall: supported && (mode === 'magpie' || !sourceCheckout),
       installLabel: mode === 'magpie' ? '下载并准备新版' : '安装并重启',
       installReason: !supported ? '一键安装仅支持 Windows；可从版本链接下载。'
@@ -97,13 +106,14 @@ function createUpdater({root, directory, currentVersion, mode = 'ccswitch', help
     if (working) throw Error('正在准备更新，请稍后再检查。');
     if (checking) return checking;
     checking = (async () => {
-      state = {...state, phase: 'checking', error: null};
+      state = {...state, phase: 'checking', progress: {kind: 'metadata', received: 0, total: null, percent: null}, error: null};
       try {
-        const raw = await download(RELEASES, 4 * 1024 * 1024, fetcher, {accept: 'application/vnd.github+json'});
+        const raw = await download(RELEASES, 4 * 1024 * 1024, fetcher, {accept: 'application/vnd.github+json',
+          onProgress: progress => { state = {...state, progress: {kind: 'metadata', ...progress, percent: null}}; }});
         releases = selectReleases(JSON.parse(raw.toString('utf8')), currentVersion);
-        state = {...state, phase: 'idle', checkedAt: new Date(now()).toISOString()};
+        state = {...state, phase: 'idle', progress: null, checkedAt: new Date(now()).toISOString()};
       } catch (error) {
-        releases = []; state = {...state, phase: 'idle', error: error.message === 'The operation was aborted due to timeout'
+        releases = []; state = {...state, phase: 'idle', progress: null, error: error.message === 'The operation was aborted due to timeout'
           ? '连接 GitHub 超时，请重试。' : '检查更新失败：' + error.message};
       }
       return snapshot();
@@ -115,14 +125,20 @@ function createUpdater({root, directory, currentVersion, mode = 'ccswitch', help
     if (!snapshot().canInstall) throw Error(snapshot().installReason);
     const release = releases.find(r => r.tag === tag);
     if (!release || !state.checkedAt || now() - Date.parse(state.checkedAt) > 3600000) throw Error('请先重新检查更新，再选择列表中的版本。');
-    state = {...state, phase: 'downloading', error: null};
+    state = {...state, phase: 'downloading', progress: {kind: 'checksum', received: 0, total: null, percent: null}, error: null};
     working = (async () => {
       const job = path.join(directory, 'updates', randomUUID());
       try {
         fs.mkdirSync(job, {recursive: true});
         const sums = await download(release.sums, 65536, fetcher);
         const expected = checksum(sums.toString('utf8'), release.name);
-        const archive = await download(release.url, 128 * 1024 * 1024, fetcher, {timeout: 180000});
+        const archive = await download(release.url, 128 * 1024 * 1024, fetcher, {timeout: 180000,
+          onProgress: ({received, total}) => {
+            const known = release.size || total;
+            state = {...state, progress: {kind: 'archive', received, total: known,
+              percent: known ? Math.min(100, Math.floor(received * 100 / known)) : null}};
+          }});
+        state = {...state, progress: {kind: 'verify', received: archive.length, total: archive.length, percent: 100}};
         if (archive.length !== release.size || createHash('sha256').update(archive).digest('hex') !== expected) throw Error('发布包 SHA-256 或大小校验失败，未安装。');
         const archivePath = path.join(job, release.name);
         fs.writeFileSync(archivePath, archive, {flag: 'wx'});
@@ -134,9 +150,9 @@ function createUpdater({root, directory, currentVersion, mode = 'ccswitch', help
         fs.writeFileSync(planFile, JSON.stringify(plan), {mode: 0o600, flag: 'wx'});
         fs.writeFileSync(resultFile, JSON.stringify({phase: 'installing', tag, at: new Date(now()).toISOString(), message: '正在校验文件并准备更新…'}));
         await spawnHelper(runner, planFile);
-        state = {...state, phase: 'idle'};
+        state = {...state, phase: 'idle', progress: null};
       } catch (error) {
-        state = {...state, phase: 'idle', error: '更新失败：' + error.message};
+        state = {...state, phase: 'idle', progress: null, error: '更新失败：' + error.message};
         try { fs.writeFileSync(resultFile, JSON.stringify({phase: 'failed', tag, message: state.error})); } catch {}
       }
     })().finally(() => { working = null; });
@@ -146,4 +162,4 @@ function createUpdater({root, directory, currentVersion, mode = 'ccswitch', help
     // Useful to wait for the bounded download when shutting down or in offline tests.
     settle: () => working || Promise.resolve()};
 }
-module.exports = {createUpdater, selectReleases, checksum, newer};
+module.exports = {createUpdater, selectReleases, checksum, newer, compareVersions};
