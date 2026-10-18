@@ -171,6 +171,7 @@ function createGuardService({runtime, databasePath, configPath, getUpstream, log
       jobs:[...jobs.keys()],manualJobs:[...jobs.values()].map(({key,providerId,model,effort})=>({key,providerId,model,effort}))};
   }
   return {prepare,assertCurrent,watch,budget,snapshot,
+    close: () => engine.close?.(),
     observe(input,transport) {
       // Read-only best effort for displaying the actual most recent model, even
       // when automatic protection is off. Never change passthrough semantics.

@@ -7,6 +7,7 @@ const {randomBytes, createHmac} = require('node:crypto');
 
 const EVENTS = new Set(['starting', 'startup-error', 'listening', 'stopping', 'stopped', 'config-state', 'config-attached', 'config-error',
   'restore-failed', 'provider-rule-updated', 'legacy-aliases-updated', 'request-received', 'request-policy',
+  'policy-read-error', 'policy-read-retry', 'policy-read-recovered', 'policy-read-blocked',
   'filtered', 'blocked', 'upstream-response', 'upstream-error', 'upstream-http-error', 'upstream-stream-error',
   'request-finished', 'request-disconnected', 'lite-header-stripped', 'model-alias-normalized',
   'retry-429', 'retry-429-exhausted', 'retry-429-permanent', 'guard-configured', 'guard-blocked',
@@ -22,6 +23,8 @@ const STATES = new Set(['filtering', 'magpie-plugin', 'waiting-for-codex-config'
   'unresponsive', 'stale-state']);
 const CODES = new Set(['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE', 'timeout', 'filter_error',
   'EACCES', 'EPERM', 'ENOSPC', 'EADDRINUSE', 'ENOENT', 'EEXIST',
+  'EBUSY', 'EIO', 'SQLITE_ERROR', 'SQLITE_BUSY', 'SQLITE_LOCKED', 'SQLITE_READONLY', 'SQLITE_IOERR',
+  'SQLITE_CORRUPT', 'SQLITE_CANTOPEN', 'SQLITE_NOTADB', 'policy_read_error', 'filter_policy_unavailable',
   'local_filter_error', 'invalid_request_json', 'invalid_compressed_request', 'invalid_input', 'invalid_include',
   'request_too_large', 'unsupported_content_encoding', 'response_reference_not_portable',
   'encrypted_context_not_portable', 'encrypted_compaction_disabled', 'proxy_loop', 'guard_unverified',
@@ -164,7 +167,9 @@ async function buildReport({service = {}, management, recorder, gatewayReachable
       if (decision?.event === 'filtered') {
         const removed = (decision.removed || 0) + (decision.removedItemIds || 0) + (decision.removedEncryptedContentItems || 0);
         check(removed ? 'filtered' : 'clean-history', 'info', removed ? '最近一次完成了历史清理。请结合相同请求编号的后续响应判断是否另有上游错误。' : '最近一次已执行历史检查，没有需要清理的内容，属于正常情况。');
-      } else if (decision?.event === 'blocked') check('request-blocked', 'error', '最近一次请求被本地明确拒绝。请在事件中查看错误类型；不可迁移的历史需文字摘要后新建会话。');
+      } else if (decision?.event === 'blocked') check('request-blocked', 'error', decision.code === 'filter_policy_unavailable'
+        ? '最近一次因无法读取供应商或过滤规则而被本地拒绝（503），未向上游发送。请稍后重试；持续出现时按请求编号检查 policy-read 事件。'
+        : '最近一次请求被本地明确拒绝。请在事件中查看错误类型；不可迁移的历史需文字摘要后新建会话。');
       else if (decision?.filter === false) {
         const reason = {'not-configured': '目标供应商尚未配置规则。', 'user-override': '目标供应商历史过滤开关已关闭。',
           'auto-failover-or-unknown': '自动故障转移已开启或状态无法识别。', 'policy-unavailable': '过滤规则读取失败。',
@@ -172,6 +177,9 @@ async function buildReport({service = {}, management, recorder, gatewayReachable
           'current-provider-unidentified': '无法唯一识别当前供应商。'}[decision.reason] || '请查看事件中的规则原因，并核对目标供应商开关。';
         check('passthrough', 'warning', '最近一次请求原样转发：' + reason);
       }
+    }
+    if (log.counters['policy-read-error'] || log.events.some(e => e.event === 'policy-read-error')) {
+      check('policy-read-errors-seen', 'warning', '出现过供应商或过滤规则读取异常。锁冲突会短暂重试，仍无法确认规则的请求已在本地拒绝；不会作为关闭过滤原样发送。请按请求编号查看 policy-read 事件及错误类别。');
     }
     if ((log.counters['upstream-http-error'] || 0) + (log.counters['upstream-error'] || 0) + (log.counters['upstream-stream-error'] || 0)) {
       check('upstream-errors-seen', 'warning', '本次运行出现过上游 HTTP、连接或流异常。请按发生时间和请求编号核对；清理历史不能修复余额、权限或服务不可用。');

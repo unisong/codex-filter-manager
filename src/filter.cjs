@@ -12,6 +12,8 @@ const {ConfigRouter, discoverCcSwitch, readLegacyModelAliases} = require('./conf
 const {createManagement} = require('./management.cjs');
 const {detectBackend, serviceBackend, workbenchMessage} = require('./service-backend.cjs');
 const {createDiagnostics, buildReport} = require('./diagnostics.cjs');
+const {createUpdater} = require('./updater.cjs');
+const {readErrorCode} = require('./policy-read.cjs');
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 function jsonFile(filename) {
@@ -170,7 +172,7 @@ async function serve(options) {
   }
   // Exclusive creation serializes simultaneous starts; don't overwrite another instance.
   fs.writeFileSync(locations.state, JSON.stringify(record, null, 2), {flag: 'wx', mode: 0o600});
-  let router, server, timer, stopping = false, lastError = null;
+  let router, server, timer, guard, stopping = false, lastError = null;
   const cleanup = () => removeOwnState(locations.state, instance);
   const shutdown = () => {
     if (stopping) return;
@@ -178,11 +180,12 @@ async function serve(options) {
     router.restore();
     stopping = true;
     clearInterval(timer);
+    const guardStopped = guard?.close();
     log('stopping');
     setTimeout(() => {
       const force = setTimeout(() => server.closeAllConnections(), 10000);
       force.unref();
-      server.close(() => { clearTimeout(force); cleanup(); log('stopped'); });
+      server.close(async () => { clearTimeout(force); await guardStopped; cleanup(); log('stopped'); });
       server.closeIdleConnections();
     }, 50);
   };
@@ -190,9 +193,19 @@ async function serve(options) {
     router = routerFor(options, locations.backup, () => upstream, log);
     const databasePath = options.databasePath || path.join(os.homedir(), '.cc-switch', 'cc-switch.db');
     const aliases = () => readLegacyModelAliases(path.join(options.runtime, 'legacy-model-aliases.json'), options.databasePath);
-    const guard = require('./guard-service.cjs').createGuardService({runtime:options.runtime,databasePath,
+    guard = require('./guard-service.cjs').createGuardService({runtime:options.runtime,databasePath,
       configPath:options.configPath,getUpstream:()=>upstream,log});
-    const management = createManagement({databasePath, runtime: options.runtime, guard, log});
+    const root = path.resolve(__dirname, '..');
+    const restart = ['--port', String(options.port), '--config', options.configPath, '--runtime', options.runtime,
+      '--backend', 'ccswitch', '--cc-db', databasePath];
+    if (options.upstream) restart.push('--upstream', options.upstream);
+    const updater = createUpdater({root, directory: options.runtime, currentVersion: require('../package.json').version,
+      helper: path.join(root, 'scripts/windows/install-update.ps1'), restart});
+    const management = createManagement({databasePath, runtime: options.runtime, guard, log, updater,
+      onStop: () => {
+        if (updater.busy) throw Error('正在准备更新，请等待更新完成后再关闭。');
+        shutdown();
+      }});
     server = makeProxy({getUpstream: () => upstream, token: record.token, onStop: shutdown, log, dashboard: management,guard,
       retry429: {maxAttempts: 30, baseDelayMs: 1500, maxDelayMs: 15000, budgetMs: 270000},
       getFilterPolicy: management.policy,
@@ -218,7 +231,7 @@ async function serve(options) {
         lastError = null;
       } catch (error) {
         const message = error.message;
-        if (lastError !== message) log('config-error', {message, code: error.code});
+        if (lastError !== message) log('config-error', {message, code: readErrorCode(error)});
         lastError = message;
         router.changeState('config-error');
       }

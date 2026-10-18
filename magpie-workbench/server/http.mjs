@@ -8,16 +8,30 @@ import {createEngine, atomic, fail} from './engine.mjs';
 import {createGateway} from './gateway.mjs';
 import {createHistoryOptions} from './history-options.mjs';
 import {createCurrentModel} from './current-model.mjs';
+import updaterModule from './updater.cjs';
 
 const webRoot = fileURLToPath(new URL('../web/', import.meta.url));
 const same = (a, b) => typeof a === 'string' && Buffer.byteLength(a) === Buffer.byteLength(b)
   && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 const token = () => randomBytes(32).toString('hex');
-export async function createService({directory, gateFile, magpieDirectory, packageRoot, options = {}, probe, tickMs, wait}) {
+export async function createService({directory, gateFile, magpieDirectory, packageRoot, options = {}, probe, tickMs, wait, onClose}) {
   const gateway = createGateway({directory, magpieDirectory, options});
   let engine;
   const historyOptions = createHistoryOptions({magpieDirectory, packageRoot});
   const currentModel = createCurrentModel({gateway: gateway.get, magpieDirectory, history: () => engine.snapshot().history});
+  const updater = updaterModule.createUpdater({root: packageRoot || fileURLToPath(new URL('../', import.meta.url)),
+    directory, currentVersion: productVersion, mode: 'magpie', helper: fileURLToPath(new URL('../tools/install-update.ps1', import.meta.url))});
+  let closing;
+  async function close() {
+    if (closing) return closing;
+    closing = (async () => {
+      await engine.close();
+      await new Promise(resolve => { server.close(resolve); server.closeAllConnections(); });
+      try { const info = JSON.parse(fs.readFileSync(runFile)); if (info.pid === process.pid && info.origin === origin) fs.unlinkSync(runFile); } catch {}
+      onClose?.();
+    })();
+    return closing;
+  }
   const sessionFile = path.join(directory, 'browser-sessions.json');
   let savedSessions = {};
   try { savedSessions = JSON.parse(fs.readFileSync(sessionFile, 'utf8')); } catch {}
@@ -68,6 +82,7 @@ export async function createService({directory, gateFile, magpieDirectory, packa
         }
         const cookie = /(?:^|;\s*)mw_session=([a-f0-9]{64})(?:;|$)/.exec(req.headers.cookie || '')?.[1];
         if (!sessions.has(cookie)) throw fail('请从桌面或 Magpie 入口重新打开工作台。', 401);
+        if (req.method === 'GET' && pathname === '/api/updates') return reply(res, 200, updater.snapshot());
         if (req.method === 'GET' && pathname === '/api/state') return reply(res, 200, {...engine.snapshot(), connection: gateway.public(), currentModel: await currentModel()});
         if (req.method === 'GET' && pathname === '/api/models') return reply(res, 200, {models: await gateway.models()});
         if (req.method === 'GET' && pathname === '/api/filter') return reply(res, 200, historyOptions.get());
@@ -77,6 +92,22 @@ export async function createService({directory, gateFile, magpieDirectory, packa
         }
         if (req.method !== 'POST') throw fail('入口不存在。', 404);
         const body = await json(req);
+        if (pathname === '/api/service/stop') {
+          if (updater.busy) throw fail('正在准备更新，请等待完成后再关闭。', 409);
+          // Stop schedules durably; keep the host and published protection/history middleware intact.
+          engine.schedule(undefined, 'stop');
+          reply(res, 200, {stopping: true});
+          setTimeout(() => close().catch(() => {}), 50);
+          return;
+        }
+        if (pathname === '/api/updates/check') {
+          if (updater.busy) throw fail('正在准备更新，请稍后再检查。', 409);
+          updater.check().catch(() => {}); return reply(res, 200, updater.snapshot());
+        }
+        if (pathname === '/api/updates/install') {
+          try { return reply(res, 200, updater.install(body.tag)); }
+          catch (error) { throw fail(error.message, 409); }
+        }
         if (pathname === '/api/filter') {
           if (engine.snapshot().targets.some(t => t.running)) throw fail('请先等待检测结束或取消检测，再保存过滤规则，避免 Magpie 重载中断取样。', 409);
           return reply(res, 200, historyOptions.save(body));
@@ -100,7 +131,7 @@ export async function createService({directory, gateFile, magpieDirectory, packa
       }
       const files = {'/': ['index.html', 'text/html'], '/app.js': ['app.js', 'text/javascript'],
         '/style.css': ['style.css', 'text/css'], '/workbench-theme.css': ['workbench-theme.css', 'text/css'],
-        '/current-selection.js': ['current-selection.js', 'text/javascript'], '/icon.svg': ['icon.svg', 'image/svg+xml']};
+        '/current-selection.js': ['current-selection.js', 'text/javascript'], '/service-controls.js': ['service-controls.js', 'text/javascript'], '/icon.svg': ['icon.svg', 'image/svg+xml']};
       const asset = files[pathname]; if (!asset) throw fail('入口不存在。', 404);
       res.writeHead(200, {'Content-Type': asset[1] + '; charset=utf-8', 'Cache-Control': 'no-cache'});
       res.end(fs.readFileSync(path.join(webRoot, asset[0])));
@@ -127,9 +158,6 @@ export async function createService({directory, gateFile, magpieDirectory, packa
   }
   origin = 'http://127.0.0.1:' + server.address().port;
   const runFile = path.join(directory, 'runtime.json');
-  atomic(runFile, JSON.stringify({origin, control, pid: process.pid, service: 'magpie-model-workbench'}));
-  return {origin, openURL, engine, async close() {
-    await engine.close(); await new Promise(resolve => { server.close(resolve); server.closeAllConnections(); });
-    try { const info = JSON.parse(fs.readFileSync(runFile)); if (info.pid === process.pid && info.origin === origin) fs.unlinkSync(runFile); } catch {}
-  }};
+  atomic(runFile, JSON.stringify({origin, control, pid: process.pid, packageRoot, service: 'magpie-model-workbench'}));
+  return {origin, openURL, engine, close};
 }

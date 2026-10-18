@@ -4,7 +4,7 @@ const http = require('node:http');
 const zlib = require('node:zlib');
 const {timingSafeEqual, randomUUID} = require('node:crypto');
 const {collectResponse} = require('./guard-transport.cjs');
-const FILTER_VERSION = 34;
+const FILTER_VERSION = 35;
 const SERVICE = 'ccswitch-codex-reasoning-filter-v1';
 const ADMIN = '/__codex_filter__';
 const LIMIT = 64 * 1024 * 1024;
@@ -12,11 +12,12 @@ const LIMIT = 64 * 1024 * 1024;
 const PERMANENT_429 = /insufficient_quota|credit_balance|quota.?exceeded|not enough quota|余额不足|额度不足/i;
 const RESPONSES_LITE_HEADER = 'x-openai-internal-codex-responses-lite';
 const {FilterError, filterResponsesRequest} = require('./history-filter.mjs');
+const {readPolicyWithRetry} = require('./policy-read.cjs');
 
 function publicPolicy(policy) {
   const filter = policy?.filter === true;
   const stripLite = policy?.stripResponsesLiteHeader === true;
-  return {filter, mode: filter ? 'filtering' : stripLite ? 'compatibility' : 'passthrough',
+  return {filter, mode: policy?.mode === 'unavailable' ? 'unavailable' : filter ? 'filtering' : stripLite ? 'compatibility' : 'passthrough',
     reason: policy?.reason || 'unidentified-provider', provider: policy?.provider || 'unknown',
     ...(stripLite ? {stripResponsesLiteHeader: true} : {})};
 }
@@ -74,8 +75,10 @@ function decodeBody(buffer, encoding, limit) {
 function sendError(res, error) {
   if (res.destroyed) return;
   if (res.headersSent) { res.destroy(); return; }
-  res.writeHead(error.status || 502, {'content-type': 'application/json; charset=utf-8'});
-  res.end(JSON.stringify({error: {type: 'invalid_request_error', code: error.code || 'local_filter_error', message: error.message}}));
+  const unavailable = error.code === 'filter_policy_unavailable';
+  res.writeHead(error.status || 502, {'content-type': 'application/json; charset=utf-8', ...(unavailable ? {'retry-after': '1'} : {})});
+  res.end(JSON.stringify({error: {type: unavailable ? 'service_unavailable' : 'invalid_request_error',
+    code: error.code || 'local_filter_error', message: error.message, ...(unavailable ? {request_id: error.requestId} : {})}}));
 }
 
 function makeProxy({getUpstream, token, dashboard, guard, requestScopedPolicy = false, onStop = () => {}, getState = () => ({}), getDiagnostics, log = () => {}, limit = LIMIT, getModelAliases = () => new Map(), getFilterPolicy = () => ({filter: false, reason: 'unidentified-provider'}),
@@ -84,6 +87,8 @@ function makeProxy({getUpstream, token, dashboard, guard, requestScopedPolicy = 
   retry429 = null}) {
   const stats = {requests: 0, filteredRequests: 0, removedReasoningItems: 0, removedItemIds: 0,
     removedEncryptedContentItems: 0,
+    policyReadErrors: 0, policyReadRetries: 0, policyReadRecoveries: 0, policyReadBlockedRequests: 0,
+    lastPolicyErrorAt: null, lastPolicyErrorCode: null, lastPolicyRecoveryAt: null,
     strippedResponsesLiteHeaders: 0, lastLiteHeaderStrippedAt: null,
     normalizedModelAliases: 0, lastModelAliasNormalizedAt: null,
     retries429: 0, lastRetry429At: null, retry429Exhausted: 0, retry429Permanent: 0,
@@ -114,6 +119,7 @@ function makeProxy({getUpstream, token, dashboard, guard, requestScopedPolicy = 
       heartbeat.unref();
     }
     function requestError(error) {
+      if (error.code === 'filter_policy_unavailable') error.requestId = requestId;
       clearInterval(heartbeat);
       if (res.destroyed) return;
       if (heartbeat && res.headersSent) {
@@ -125,7 +131,7 @@ function makeProxy({getUpstream, token, dashboard, guard, requestScopedPolicy = 
         throw new FilterError('invalid_target', 'Only origin-form HTTP requests are accepted.');
       }
       const route = decodeURIComponent(new URL(req.url, 'http://127.0.0.1').pathname);
-      const assetName = ['workbench-theme.css','current-selection.js'].find(name => route === ADMIN + '/' + name);
+      const assetName = ['workbench-theme.css','current-selection.js','service-controls.js'].find(name => route === ADMIN + '/' + name);
       const isDashboard = dashboard && (assetName || route === ADMIN + '/ui' || route === ADMIN + '/favicon.svg' || route.startsWith(ADMIN + '/api/'));
       if (isDashboard) {
         const origin = 'http://127.0.0.1:' + server.address().port;
@@ -204,9 +210,22 @@ function makeProxy({getUpstream, token, dashboard, guard, requestScopedPolicy = 
         }
         policyInput = policyInput && typeof policyInput === 'object' ? policyInput : {model: ''};
       }
-      let policy;
-      try { policy = await getFilterPolicy(policyInput); }
-      catch { policy = {filter: false, reason: 'policy-unavailable'}; }
+      const readPolicy = async () => {
+        if (!tracked) {
+          try { return await getFilterPolicy(policyInput); }
+          catch { return {filter: false, reason: 'policy-unavailable'}; }
+        }
+        return readPolicyWithRetry(() => getFilterPolicy(policyInput), {signal: guardController.signal, onEvent(event, data) {
+          requestLog(event, data);
+          if (event === 'policy-read-error') {
+            stats.policyReadErrors++; stats.lastPolicyErrorAt = new Date().toISOString(); stats.lastPolicyErrorCode = data.code;
+            lastPolicy = publicPolicy({filter: false, mode: 'unavailable', reason: data.reason});
+          } else if (event === 'policy-read-retry') stats.policyReadRetries++;
+          else if (event === 'policy-read-recovered') { stats.policyReadRecoveries++; stats.lastPolicyRecoveryAt = new Date().toISOString(); }
+          else if (event === 'policy-read-blocked') stats.policyReadBlockedRequests++;
+        }});
+      };
+      let policy = await readPolicy();
       const shouldFilter = policy?.filter === true;
       lastPolicy = publicPolicy(policy);
       if (tracked) requestLog('request-policy', {filter: shouldFilter, reason: policy?.reason, provider: policy?.provider});
@@ -223,8 +242,7 @@ function makeProxy({getUpstream, token, dashboard, guard, requestScopedPolicy = 
       if (isResponses) {
         const original = body ?? await readBody(req, limit);
         // Uploading can take time: never filter using a pre-upload routing decision.
-        try { policy = await getFilterPolicy(policyInput); }
-        catch { policy = {filter: false, reason: 'policy-unavailable'}; }
+        policy = await readPolicy();
         isResponses = policy?.filter === true || policy?.stripResponsesLiteHeader === true;
         lastPolicy = publicPolicy(policy);
         if (tracked) requestLog('request-policy', {filter: policy?.filter === true, reason: policy?.reason, provider: policy?.provider});

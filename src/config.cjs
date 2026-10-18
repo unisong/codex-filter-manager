@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const {localOrigin} = require('./proxy.cjs');
+const {unavailablePolicy} = require('./policy-read.cjs');
 
 function atomicWrite(filename, text) {
   const pause = attempt => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Math.min(20 + attempt * 15, 120));
@@ -156,7 +157,7 @@ function providerPolicy(config, override) {
 // One read-only snapshot per request. Project only config TOML, never auth/API-key fields.
 function readFilterPolicy(databasePath = path.join(os.homedir(), '.cc-switch', 'cc-switch.db'), overrides = {}) {
   const pass = reason => ({filter: false, mode: 'passthrough', reason, provider: 'unknown'});
-  if (!fs.existsSync(databasePath)) return pass('database-missing');
+  if (!fs.existsSync(databasePath)) return unavailablePolicy('database-missing', {code: 'ENOENT'});
   let db;
   try {
     const {DatabaseSync} = require('node:sqlite');
@@ -167,7 +168,7 @@ function readFilterPolicy(databasePath = path.join(os.homedir(), '.cc-switch', '
     const rows = db.prepare("SELECT id, json_extract(settings_config, '$.config') AS config FROM providers WHERE app_type = 'codex' AND is_current = 1").all();
     if (rows.length !== 1 || typeof rows[0].config !== 'string') return pass('current-provider-unidentified');
     return providerPolicy(rows[0].config, Object.hasOwn(overrides, rows[0].id) ? overrides[rows[0].id] : undefined);
-  } catch { return pass('database-or-config-unreadable'); }
+  } catch (error) { return unavailablePolicy('database-or-config-unreadable', error); }
   finally { db?.close(); }
 }
 

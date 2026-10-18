@@ -459,8 +459,10 @@
       const open = new URLSearchParams(location.hash.slice(1)).get('open');
       if (open) { window.history.replaceState(null, '', '/'); await api('session', {key: open}); }
       await refresh(true);
+      window.ServiceControls?.mount({tools:document.querySelector('.workbench-top .actions'),settings:document.querySelector('#settings .settings-grid'),
+        mode:'magpie',api:(route,body)=>api(route.slice(1),body)});
       let reconnecting = false;
-      setInterval(() => { if (!document.hidden) refresh().then(() => {
+      setInterval(() => { if (!window.ServiceControls?.suspended && !document.hidden) refresh().then(() => {
         if (reconnecting) { reconnecting = false; notice('工作台已重新连接。过滤规则与检测记录已保留。', 'success'); }
       }).catch(() => { reconnecting = true; notice('正在重新连接工作台…如 Magpie 已关闭，请先启动后从桌面入口打开。'); }); }, 3000);
     } catch (e) { notice(e.message, 'error'); }

@@ -18,6 +18,21 @@ const scoring = (winner = requested, probability = 0.94, expectedProbability = 0
   prediction: winner, used_outputs: 3, diagnostics: Array.from({length: 3}, () => ({accepted: true})),
   results: [{model: winner, probability}, {model: winner === requested ? different : requested, probability: expectedProbability}]
 });
+test('service close aborts an active probe, refuses new probes and preserves protection settings', async t => {
+  let began;
+  const started = new Promise(resolve => { began = resolve; });
+  const f = setup(t, {probe: ({signal}) => new Promise((resolve, reject) => {
+    began(); signal.addEventListener('abort', () => reject(Error('cancelled')), {once: true});
+  })});
+  f.guard.configure('p1', {enabled: true, ttlSeconds: 600});
+  const pending = f.guard.ensure(ctx()).catch(error => error);
+  await started; await f.guard.close(); await pending;
+  assert.equal(f.guard.snapshot().checking.length, 0);
+  assert.equal(f.guard.policy('p1').enabled, true);
+  await assert.rejects(f.guard.ensure(ctx()), /关闭/);
+  const restarted = createGuard(f.options);
+  assert.equal(restarted.policy('p1').enabled, true);
+});
 function historicalRecord(record) {
   const {cacheValid, cacheReason, outcome, cooldownActive, retryAfterSeconds, ...verdict} = record;
   return verdict;

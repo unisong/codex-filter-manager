@@ -9,7 +9,7 @@ const net = require('node:net');
 const zlib = require('node:zlib');
 const {once} = require('node:events');
 const {spawn, spawnSync} = require('node:child_process');
-const {makeProxy, filterResponsesRequest, localOrigin, decodeBody, ADMIN} = require('../src/proxy.cjs');
+const {makeProxy, filterResponsesRequest, localOrigin, decodeBody, ADMIN, FILTER_VERSION} = require('../src/proxy.cjs');
 const {ConfigRouter, providerBase, readFilterPolicy} = require('../src/config.cjs');
 const {start, stop, status, parseArgs, ownsProcess} = require('../filter.cjs');
 
@@ -303,7 +303,7 @@ test('HTTP filtering handles all compressed forms and preserves authorization, p
   const health = JSON.parse((await call(origin, ADMIN + '/health', {method: 'GET'})).body);
   assert.equal(health.stats.filteredRequests, 7);
   assert.equal(health.stats.removedReasoningItems, 7);
-  assert.equal(health.filterVersion, 34);
+  assert.equal(health.filterVersion, FILTER_VERSION);
   assert.equal(health.stats.removedItemIds, 35);
   assert.equal(health.stats.upstreamHttpErrors, 5);
   assert.equal(health.stats.lastUpstreamStatus, 200);
@@ -829,7 +829,7 @@ test('provider switches per request; non-target, unknown and failover pass compr
   assert.equal(health.policy.mode, 'passthrough');
   assert.equal(health.policy.reason, 'auto-failover-or-unknown');
   assert.equal(health.stats.filteredRequests, 3);
-  assert.equal(health.filterVersion, 34);
+  assert.equal(health.filterVersion, FILTER_VERSION);
 });
 test('explicit include preservation applies only to configured provider IDs', async t => {
   const {db, filename, select} = mockDatabase(t);
@@ -872,23 +872,32 @@ test('explicit include preservation applies only to configured provider IDs', as
   assert.equal((await call(origin, '/responses', {body: raw})).status, 200);
   assert.deepEqual(received.raw, raw);
   const health = JSON.parse((await call(origin, ADMIN + '/health', {method: 'GET'})).body);
-  assert.equal(health.filterVersion, 34);
+  assert.equal(health.filterVersion, FILTER_VERSION);
   assert.equal(health.stats.filteredRequests, 2);
   assert.equal(health.stats.removedReasoningItems, 2);
   assert.equal(health.stats.removedItemIds, 10);
   assert.equal(health.stats.upstreamHttpErrors, 1);
 });
 
-test('default and failing policy are safe passthrough', async t => {
-  const upstream = http.createServer((req, res) => req.pipe(res));
+test('default policy stays passthrough but a failed policy cannot forward unchecked compact input', async t => {
+  let received = 0;
+  const upstream = http.createServer((req, res) => { received++; req.pipe(res); });
   const upstreamOrigin = await listen(upstream);
   t.after(() => close(upstream));
   for (const getFilterPolicy of [undefined, () => { throw new Error('mock'); }]) {
     const proxy = makeProxy({getUpstream: () => upstreamOrigin, getFilterPolicy});
     const origin = await listen(proxy);
-    try { assert.equal((await call(origin, '/responses/compact', {body: 'raw-not-json'})).body, 'raw-not-json'); }
+    try {
+      const response = await call(origin, '/responses/compact', {body: 'raw-not-json'});
+      if (!getFilterPolicy) assert.equal(response.body, 'raw-not-json');
+      else {
+        assert.equal(response.status, 503);
+        assert.equal(JSON.parse(response.body).error.code, 'filter_policy_unavailable');
+      }
+    }
     finally { await close(proxy); }
   }
+  assert.equal(received, 1);
 });
 
 test('multiline TOML examples cannot opt a different provider into filtering', t => {

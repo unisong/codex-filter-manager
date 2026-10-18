@@ -17,7 +17,7 @@ function validateRule(rule) {
   return Object.fromEntries(RULE_KEYS.map(k => [k, rule[k]]));
 }
 
-function createManagement({databasePath, runtime, guard, log = () => {}}) {
+function createManagement({databasePath, runtime, guard, updater, onStop, log = () => {}}) {
   const rulesPath = path.join(runtime, 'provider-rules.json');
   const aliasesPath = path.join(runtime, 'legacy-model-aliases.json');
   let productVersion = '';
@@ -87,9 +87,22 @@ function createManagement({databasePath, runtime, guard, log = () => {}}) {
     policy,
     html: token => fs.readFileSync(path.join(__dirname, '..', 'web', 'dashboard.html'), 'utf8').replace('__FILTER_TOKEN_JSON__', JSON.stringify(token)),
     icon: () => fs.readFileSync(path.join(__dirname, '..', 'web', 'assets', 'favicon.svg')),
-    asset: name => ['workbench-theme.css','current-selection.js'].includes(name) ? fs.readFileSync(path.join(__dirname,'..','web','assets',name)) : null,
+    asset: name => ['workbench-theme.css','current-selection.js','service-controls.js'].includes(name) ? fs.readFileSync(path.join(__dirname,'..','web','assets',name)) : null,
     state,
     handle(method, route, payload) {
+      if (method === 'POST' && route === '/service/stop' && onStop) {
+        try { onStop(); return {stopping: true}; }
+        catch (error) { throw new FilterError('service_stop_failed', '关闭未完成：' + error.message, 409); }
+      }
+      if (updater && route === '/updates' && method === 'GET') return updater.snapshot();
+      if (updater && route === '/updates/check' && method === 'POST') {
+        if (updater.busy) throw new FilterError('update_busy', '正在准备更新，请稍后再检查。', 409);
+        updater.check().catch(() => {}); return updater.snapshot();
+      }
+      if (updater && route === '/updates/install' && method === 'POST') {
+        try { return updater.install(payload.tag); }
+        catch (error) { throw new FilterError('update_rejected', error.message, 409); }
+      }
       if (method === 'GET' && route === '/state') return state();
       const guardProvider = route.match(/^\/guard\/providers\/(.+)$/);
       if (guard && method === 'PUT' && guardProvider) {

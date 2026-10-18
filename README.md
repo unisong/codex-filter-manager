@@ -4,7 +4,7 @@
 
 **Windows 10 / 11 · 无需管理员权限 · 首次启动自动准备 Node.js · MIT**
 
-当前版本：**v1.0.9 / 服务 v34**。[下载最新版](https://github.com/unisong/codex-filter-manager/releases/latest) · [更新记录](docs/CHANGELOG.md) · [问题反馈](https://github.com/unisong/codex-filter-manager/issues)
+当前版本：**v1.0.10 / 服务 v35**。[下载最新版](https://github.com/unisong/codex-filter-manager/releases/latest) · [更新记录](docs/CHANGELOG.md) · [问题反馈](https://github.com/unisong/codex-filter-manager/issues)
 
 ## 两种版本
 
@@ -40,7 +40,9 @@ magpie plugin add @magpie-community/middleware-codex-history
 Codex → 本机过滤服务 → CC Switch → 当前供应商
 ```
 
-日常入口：`Start.bat` 启动并打开页面；`Status.bat` 查看状态；`Diagnose.bat` 导出脱敏诊断；`Stop.bat` 停止并恢复配置。关闭浏览器不会停止后台服务，工具默认不注册开机启动。
+日常入口：`Start.bat` 启动并打开页面；`Status.bat` 查看状态；`Diagnose.bat` 导出脱敏诊断。退出时点击页面右上角 **「关闭服务」**，确认后恢复 Codex 配置、取消检测并结束过滤进程；`Stop.bat` 仍可使用。关闭浏览器不会停止后台服务，工具默认不注册开机启动。
+
+供应商数据库短暂忙碌时，服务会异步重试读取规则，最多追加 3 次、等待合计约 1.2 秒。仍无法读取则返回本地 `503 / filter_policy_unavailable`，附请求编号及重试提示，不把未知规则当成关闭过滤。管理页会保留本次运行的异常统计；持续出现时点击「查看诊断」。无需因此新建会话或更改兼容开关。
 
 ## Magpie 快速开始
 
@@ -54,9 +56,23 @@ magpie plugin add /path/to/codex-filter-manager/magpie-workbench
 
 详细安装、升级、数据位置与边界见 [Magpie 使用方式](docs/MAGPIE.md)。
 
+## 关闭与更新
+
+在 **设置与诊断 → 版本更新** 点击「检查更新」，选择比当前版本新的正式版本，查看说明后按需更新。打开页面不会自动检查、下载或安装，也不会调用模型。
+
+| 环境 | 关闭按钮 | 更新方式 |
+| --- | --- | --- |
+| CC Switch 的 Windows 发布包 | 关闭过滤服务并恢复配置；CC Switch 与 Codex 保持运行 | 「安装并重启」下载并校验发布包，备份程序文件后安装；保留规则、记录与运行时，失败时尝试恢复旧版 |
+| Magpie 完整工作台 | 关闭本机工作台及检测；Magpie、历史过滤与已有暂停规则继续有效 | 「下载并准备新版」生成独立插件目录，按页面给出的路径在 Magpie 切换目录并重新加载 |
+| Git 源码目录 / 非 Windows | 按对应环境关闭 | 可以检查版本，通过 Git 或发布页更新；源码目录禁止覆盖安装 |
+
+安装更新和关闭服务前，请结束正在进行的 Codex 调用。Magpie 工作台关闭后，从 Magpie 的工作台入口重新打开或重新加载插件；已停止的定期检测需手动恢复。浏览器和 GitHub 的网络错误不会自动关闭正在运行的服务。
+
+目前检查最近 30 个 Release 中带完整 Windows ZIP 和 `SHA256SUMS.txt` 的更新版本，不提供降级或预发布版本。首次获得页面更新功能仍需安装包含本功能的版本；老版本不会自动出现按钮。详细行为、备份和故障恢复见 [服务关闭与更新](docs/SERVICE-UPDATES.md)。
+
 ## 界面
 
-界面按 **当前状态 → 主操作 → 配置列表 → 技术说明** 排列。左上角显示运行状态、版本和项目链接；右上角保留单图标明暗切换和当前页面刷新。
+界面按 **当前状态 → 主操作 → 配置列表 → 技术说明** 排列。左上角显示运行状态、版本和项目链接；右上角提供明暗切换、当前页面刷新和关闭入口。
 
 ![历史过滤](docs/images/providers.png)
 

@@ -69,13 +69,16 @@ const historyProvenance = JSON.parse(fs.readFileSync(path.join(workbenchRoot, 'h
 if (sha256(staged('magpie-workbench/history/codex-history.middleware.js')) !== historyProvenance.sha256) {
   issues.push('magpie-workbench/history/codex-history.middleware.js: historical baseline mismatch');
 }
-for (const required of ['filter.cjs', 'src/filter.cjs', 'src/config.cjs', 'src/proxy.cjs', 'src/management.cjs', 'src/diagnostics.cjs', 'web/dashboard.html', 'Diagnose.bat', '.github/ISSUE_TEMPLATE/bug_report.yml', 'src/service-backend.cjs', 'src/history-filter.mjs', 'src/portable-web-search.mjs', 'src/guard-service.cjs', 'src/guard-evidence.cjs', 'src/guard-retry.cjs', 'src/guard.cjs', 'src/guard-transport.cjs', 'README.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'Start.bat', 'Stop.bat', 'Status.bat', 'scripts/windows/start.ps1', 'web/assets/app.ico', 'web/assets/favicon.svg', 'web/assets/workbench-theme.css', 'web/assets/current-selection.js', 'docs/images/providers.png', 'docs/images/protection.png', 'docs/images/history.png', 'magpie-workbench/package.json', 'magpie-workbench/README.md', 'magpie-workbench/plugin/index.mjs', 'magpie-workbench/workbench.middleware.js']) {
+for (const required of ['src/policy-read.cjs', 'src/updater.cjs', 'scripts/windows/install-update.ps1', 'web/assets/service-controls.js', 'magpie-workbench/server/updater.cjs', 'magpie-workbench/tools/install-update.ps1', 'magpie-workbench/web/service-controls.js', 'filter.cjs', 'src/filter.cjs', 'src/config.cjs', 'src/proxy.cjs', 'src/management.cjs', 'src/diagnostics.cjs', 'web/dashboard.html', 'Diagnose.bat', '.github/ISSUE_TEMPLATE/bug_report.yml', 'src/service-backend.cjs', 'src/history-filter.mjs', 'src/portable-web-search.mjs', 'src/guard-service.cjs', 'src/guard-evidence.cjs', 'src/guard-retry.cjs', 'src/guard.cjs', 'src/guard-transport.cjs', 'README.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'Start.bat', 'Stop.bat', 'Status.bat', 'scripts/windows/start.ps1', 'web/assets/app.ico', 'web/assets/favicon.svg', 'web/assets/workbench-theme.css', 'web/assets/current-selection.js', 'docs/images/providers.png', 'docs/images/protection.png', 'docs/images/history.png', 'magpie-workbench/package.json', 'magpie-workbench/README.md', 'magpie-workbench/plugin/index.mjs', 'magpie-workbench/workbench.middleware.js']) {
   if (!files.includes(required)) issues.push(required + ': required release file is not staged/tracked');
 }
 // Magpie loads magpie-workbench/ on its own, so these copies are intentional and must stay identical.
 for (const [mainFile, mirrorFile] of [['LICENSE', 'magpie-workbench/LICENSE'],
   ['web/assets/workbench-theme.css', 'magpie-workbench/web/workbench-theme.css'],
   ['web/assets/current-selection.js', 'magpie-workbench/web/current-selection.js'],
+  ['web/assets/service-controls.js', 'magpie-workbench/web/service-controls.js'],
+  ['src/updater.cjs', 'magpie-workbench/server/updater.cjs'],
+  ['scripts/windows/install-update.ps1', 'magpie-workbench/tools/install-update.ps1'],
   ['web/assets/favicon.svg', 'magpie-workbench/web/icon.svg'],
   ['src/guard-evidence.cjs', 'magpie-workbench/server/evidence.cjs'],
   ['src/portable-web-search.mjs', 'magpie-workbench/history/portable-web-search.mjs'],

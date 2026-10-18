@@ -25,3 +25,22 @@ aside,.side{width:240px;padding:28px 18px;background:var(--sidebar)}.shell{grid-
 .drawer{z-index:20}
 details.wb-inline-editor:not([open]){display:none}
 body{min-height:100vh;background-attachment:fixed;background-repeat:no-repeat}
+
+/* Service lifecycle controls shared by both workbenches. */
+.service-stop{display:inline-flex;align-items:center;gap:7px;color:var(--bad)}
+.service-stop svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}
+.service-update{padding:24px;grid-column:1/-1;margin-bottom:20px}
+.service-update-head,.service-update-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.service-update h2{margin:4px 0 0}.service-update .muted{color:var(--muted);font-size:13px;line-height:1.7}
+.service-update-actions{justify-content:flex-start}.service-update-actions label{display:flex;flex-direction:row;align-items:center;gap:12px;margin:0}
+.service-update-actions select{min-width:160px;width:auto;margin:0;padding:9px 12px;font:inherit;color:var(--text);background:var(--panel);border:1px solid var(--line);border-radius:8px}
+.settings-grid>.panel.service-update{order:-2;margin-bottom:0}.settings-grid>.panel.health-panel{order:-1}.settings-grid #connectionForm,.settings-grid #budgetForm{order:0}.settings-grid>.panel.boundary-panel{order:1}
+.service-update-status{padding:12px 14px;background:var(--subtle);border:1px solid var(--line);border-radius:9px;font-size:13px}
+.service-update[data-error=true] .service-update-status,.service-update[data-error=true] .service-update-result{color:var(--bad)}
+.service-release-notes{margin-top:18px;font-size:13px}.service-release-notes pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;max-height:260px;overflow:auto;color:var(--muted)}
+.service-update-result{font-size:13px;overflow-wrap:anywhere}.service-update-ready{padding:14px;border:1px solid var(--line);border-radius:9px;font-size:13px}
+.service-update-ready input{box-sizing:border-box;width:100%;font-size:12px}
+.service-confirm{box-sizing:border-box;width:min(480px,calc(100vw - 32px));padding:26px;border:1px solid var(--line);border-radius:16px;background:var(--panel);color:var(--text)}
+.service-confirm::backdrop{background:rgba(15,20,15,.4)}.service-confirm p{line-height:1.8;color:var(--muted)}.service-confirm .service-update-actions{justify-content:flex-end}
+.service-stopped{padding:20px;margin:0 0 24px;background:var(--subtle);border:1px solid var(--line);border-radius:12px}.service-stopped p{font-size:13px;color:var(--muted)}
+@media(max-width:700px){.workbench-top{flex-wrap:wrap}.workbench-top .page-tools,.workbench-top>.actions{flex-wrap:wrap;gap:8px;justify-content:flex-start}.service-update{padding:18px}.service-update-actions{align-items:stretch}.service-update-actions label{flex-wrap:wrap}}

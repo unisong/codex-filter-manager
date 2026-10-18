@@ -116,6 +116,7 @@ function createGuard({runtime, probe, log = () => {}, onBlock = () => {}, now = 
   // the maps that authorize a request or retain a durable lock.
   const history = [];
   const flights = new Map(), generations = new Map(), keyGenerations = new Map(), admissions = new WeakMap();
+  let closed = false;
   // Display why a historical pass cannot be reused without changing its verdict.
   // Trust remains exclusively in the live passes map and is never restored here.
   const cacheReasons = new Map();
@@ -520,6 +521,7 @@ function createGuard({runtime, probe, log = () => {}, onBlock = () => {}, now = 
   }
 
   async function ensure(context, {force = false, signal} = {}) {
+    if (closed) throw failure('guard_unverified', '过滤服务正在关闭。');
     checkHealthy(); safeContext(context);
     if (signal?.aborted) throw failure('guard_unverified', '请求已取消。');
     const settings = policy(context.providerId);
@@ -591,7 +593,12 @@ function createGuard({runtime, probe, log = () => {}, onBlock = () => {}, now = 
       checking: [...flights.values()].map(entry => ({...safeContext(entry.context), ...(entry.progress ? {progress: {...entry.progress}} : {})})), ...(fatal ? {error: fatal} : {})};
   }
 
-  return {policy, configure, invalidate, ensure, assertAllowed, block, clear, snapshot};
+  return {policy, configure, invalidate, ensure, assertAllowed, block, clear, snapshot,
+    async close() {
+      closed = true;
+      for (const flight of flights.values()) flight.controller.abort();
+      await Promise.allSettled([...flights.values()].map(flight => flight.promise));
+    }};
 }
 
 module.exports = {createGuard, classify, validatePolicy, FAILURE_COOLDOWN_SECONDS, TIMEOUT_MS};

@@ -14,7 +14,8 @@
 
 Magpie 从插件目录单独加载，所以少量文件有意保留为副本。修改任一方时同步另一方，`release-check` 会校验它们一致：
 
-- `web/assets/` 中的 `workbench-theme.css`、`current-selection.js`、`favicon.svg` 与 `magpie-workbench/web/` 中的对应文件
+- `web/assets/` 中的 `workbench-theme.css`、`current-selection.js`、`service-controls.js`、`favicon.svg` 与 `magpie-workbench/web/` 中的对应文件
+- `src/updater.cjs` 与 `magpie-workbench/server/updater.cjs`，`scripts/windows/install-update.ps1` 与 `magpie-workbench/tools/install-update.ps1`
 - `src/guard-evidence.cjs` 与 `magpie-workbench/server/evidence.cjs`
 - `src/portable-web-search.mjs` 与 `magpie-workbench/history/portable-web-search.mjs`
 - `vendor/modeltrace/` 与 `magpie-workbench/vendor/modeltrace/`，`LICENSE` 与 `magpie-workbench/LICENSE`
@@ -39,3 +40,5 @@ npm run release:check
 ```
 
 修改页面时，再运行 `CONTRIBUTING.md` 中列出的浏览器检查。默认测试不得请求真实模型；`scripts/live-*.cjs` 只能由维护者手动运行。
+
+修改更新器时运行 `python tests/update-install-check.py`，验证成功安装、失败恢复、校验与路径限制。更新器不得覆盖 `.runtime/`、`.tools/`、Git 源码检出或正在被 Magpie 加载的插件；下载来源固定为本仓库正式 Release。

@@ -8,7 +8,7 @@ async function start(options) {
   service ||= import('../server/http.mjs').then(({createService}) => createService({directory,
     gateFile: fileURLToPath(new URL('../workbench.middleware.js', import.meta.url)),
     packageRoot: fileURLToPath(new URL('../', import.meta.url)),
-    magpieDirectory: options.magpieDirectory, options})).then(value => { clearTimeout(retry); retry = undefined; return value; }).catch(e => {
+    magpieDirectory: options.magpieDirectory, options, onClose: () => { service = undefined; }})).then(value => { clearTimeout(retry); retry = undefined; return value; }).catch(e => {
       service = undefined;
       // A retired host may still finish an unrelated streamed reply. Wait
       // for its console address without running a second detector engine.

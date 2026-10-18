@@ -50,9 +50,12 @@ def route_request(route):
         ui_loads += 1
         route.fulfill(status=200, content_type="text/html; charset=utf-8", body=html.replace("__FILTER_TOKEN_JSON__", json.dumps(server_token)))
         return
-    if path in ("/workbench-theme.css", "/current-selection.js", "/favicon.svg"):
+    if path in ("/workbench-theme.css", "/current-selection.js", "/service-controls.js", "/favicon.svg"):
         asset = root / "web" / "assets" / path[1:]
         route.fulfill(status=200, content_type={".css": "text/css", ".js": "text/javascript", ".svg": "image/svg+xml"}[asset.suffix], body=asset.read_bytes())
+        return
+    if path == "/api/updates":
+        route.fulfill(json={"currentVersion": "1.0.9", "releases": [], "phase": "idle", "canInstall": False})
         return
     if not path.startswith("/api/"):
         route.fulfill(status=404, body="")
@@ -96,6 +99,19 @@ with sync_playwright() as p:
     page.route("**/*", route_request)
     page.goto("http://127.0.0.1:19999/__codex_filter__/ui")
     expect(page.locator("#versionBadge")).to_contain_text("服务 v" + str(filter_version))
+    expect(page.locator("#policyWarning")).to_be_hidden()
+    state["filter"]["stats"].update(policyReadErrors=4, policyReadRetries=3, policyReadRecoveries=0,
+                                   policyReadBlockedRequests=1, lastPolicyErrorCode="SQLITE_BUSY")
+    page.locator("#refresh").click()
+    expect(page.locator("#policyWarning")).to_contain_text("SQLITE_BUSY")
+    expect(page.locator("#policyWarning")).to_contain_text("拦截 1 个请求")
+    state["filter"]["stats"].update(policyReadRecoveries=1)
+    page.locator("#refresh").click()
+    expect(page.locator("#policyWarning")).to_contain_text("已重试恢复 1 次")
+    expect(page.locator("#policyWarning")).to_be_visible()
+    state["filter"]["stats"] = {}
+    page.locator("#refresh").click()
+    expect(page.locator("#policyWarning")).to_be_hidden()
     expect(page.locator("#providersView")).to_be_visible()
     expect(page.locator("#protectionView")).to_be_hidden()
     expect(page.locator("#historyView")).to_be_hidden()

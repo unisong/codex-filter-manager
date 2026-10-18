@@ -15,11 +15,14 @@ CC Switch 服务启动会接管当前用户的 Codex 配置；Magpie 使用独�
 | `filter.cjs` | 兼容现有命令和启动器的轻量入口，调用 `src/filter.cjs` |
 | `src/filter.cjs` | 后台生命周期、启动/停止、配置接入 |
 | `src/config.cjs` | CC Switch 发现、只读策略、精确地址恢复 |
+| `src/policy-read.cjs` | 规则读取错误分类、可取消的短暂重试、失败时明确拒绝，禁止复用其他供应商规则 |
 | `src/service-backend.cjs` | 识别 Magpie 配置并提示使用完整工作台，避免误启动独立服务 |
 | `src/history-filter.mjs`、`src/portable-web-search.mjs` | CC Switch 代理的历史清理与搜索文字转换 |
 | `magpie-workbench/` | 完整 Magpie 本地工作台源码、原生设置页、本机后台和独立离线测试 |
 | `src/proxy.cjs` | HTTP/SSE 转发、历史清理、429 重试 |
 | `src/management.cjs` | 本机管理 API、规则与页面 |
+| `src/updater.cjs`、`scripts/windows/install-update.ps1` | 正式版检查、校验下载、Windows 安装与失败恢复；Magpie 包内保持自包含副本 |
+| `web/assets/service-controls.js` | 两套工作台共用的关闭服务与更新交互 |
 | `src/diagnostics.cjs` | 字段白名单日志、运行中轮转、脱敏诊断报告 |
 | `web/dashboard.html`、`web/assets/` | 不依赖前端构建的可视化页面、共享样式与图标 |
 | `src/guard.cjs` | 指纹检查、通过缓存、锁定和检测历史 |
@@ -90,6 +93,8 @@ python .\magpie-workbench\test\web-check.py
 python .\magpie-workbench\test\filter-ui-check.py
 python .\magpie-workbench\test\interval-ui-check.py
 python .\magpie-workbench\test\schedule-ui-check.py
+python .\tests\service-controls-check.py
+python .\tests\update-install-check.py
 ```
 
 这些脚本使用模拟供应商数据，不应连接正式页面或读取真实凭据。`scripts/live-check.cjs` 与 `scripts/live-guard-check.cjs` 属于**明确手动执行的真实供应商检查**，可能调用模型并计费，不应放入 CI 或默认测试链。

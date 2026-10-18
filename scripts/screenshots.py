@@ -20,6 +20,7 @@ output = args.output or root / 'docs/images'
 output.mkdir(parents=True, exist_ok=True)
 html = (root / 'web' / 'dashboard.html').read_text(encoding='utf-8').replace('__FILTER_TOKEN_JSON__', '"demo-only"')
 version = int(re.search(r'FILTER_VERSION\s*=\s*(\d+)', (root / 'src' / 'proxy.cjs').read_text(encoding='utf-8')).group(1))
+product_version = json.loads((root / 'package.json').read_text(encoding='utf-8'))['version']
 fixture_evidence = json.loads(subprocess.check_output(['node', 'tests/fixtures/guard-fixtures.cjs'], cwd=root, text=True))
 off = {'historyFilter': False, 'preserveEncryptedInclude': True, 'stripResponsesLiteHeader': False}
 providers = [
@@ -33,7 +34,7 @@ record = {'key': 'demo-key', 'providerId': 'demo-main', 'providerName': provider
 history = [{**record, 'id': f'demo-history-{i}', 'source': 'manual' if i == 0 else 'automatic', 'checkedAt': (now - timedelta(minutes=30*i)).isoformat()} for i in range(24)]
 history[1].update(status='unverified', prediction='gpt-6-luna', score=.999, sampleEvidence=[fixture_evidence['different']], reason='演示数据：已完成轮次有明显模型差异，复核未完成；没有新增持久锁定。')
 history[2].update(status='unverified', score=None, prediction=None, sampleEvidence=[], reason='检测上游返回 HTTP 403：上游拒绝访问。演示数据，这不是降智结论。')
-state = {'providers': providers, 'revision': 'demo-revision', 'productVersion': '1.0.9', 'currentPolicy': {'filter': True}, 'autoFailover': False,
+state = {'providers': providers, 'revision': 'demo-revision', 'productVersion': product_version, 'currentPolicy': {'filter': True}, 'autoFailover': False,
     'aliasCompatibility': {'configured': False, 'enabled': False, 'activeCount': 0},
     'filter': {'filterVersion': version, 'state': 'filtering', 'stats': {'filteredRequests': 128, 'removedEncryptedContentItems': 436}},
     'guard': {'models': ['gpt-6-astra', 'gpt-6-sol'], 'providers': {'demo-main': {'enabled': True, 'ttlSeconds': 1800}}, 'settingsRevision': 'demo-guard', 'records': [record], 'history': history, 'historyLimit': 100, 'current': {'providerId': 'demo-main', 'model': record['model'], 'effort': record['effort'], 'available': True, 'key': record['key']}}}
@@ -69,7 +70,9 @@ with sync_playwright() as p:
             route.fulfill(content_type='image/svg+xml', body=(root / 'web/assets/favicon.svg').read_text(encoding='utf-8'))
         elif request.url.endswith('/api/state'):
             route.fulfill(content_type='application/json', body=json.dumps(state, ensure_ascii=False))
-        elif request.url.endswith(('/workbench-theme.css', '/current-selection.js')):
+        elif request.url.endswith('/api/updates'):
+            route.fulfill(json={'currentVersion': product_version, 'releases': [], 'phase': 'idle', 'canInstall': True, 'checkedAt': None, 'error': None})
+        elif request.url.endswith(('/workbench-theme.css', '/current-selection.js', '/service-controls.js')):
             asset = root / 'web/assets' / request.url.rsplit('/', 1)[-1]
             route.fulfill(content_type='text/css' if asset.suffix == '.css' else 'text/javascript', body=asset.read_bytes())
         else:

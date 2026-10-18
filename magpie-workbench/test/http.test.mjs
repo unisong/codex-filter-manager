@@ -64,6 +64,31 @@ test('gateway connection only permits exact loopback origins, never supplier URL
   assert.equal(localGateway('http://127.0.0.1:3425/v1/'), 'http://127.0.0.1:3425');
 });
 
+test('browser stop requires the local session, stops schedules and closes only the workbench listener', async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'workbench-stop-'));
+  let closed = 0;
+  const service = await createService({directory, gateFile: path.join(directory, 'gate.js'),
+    onClose: () => closed++, options: {gatewayUrl: 'http://127.0.0.1:1'}});
+  try {
+    const response = await fetch(service.origin + '/api/session', {method: 'POST', headers: {Origin: service.origin},
+      body: JSON.stringify({key: new URL(service.openURL()).hash.slice(6)})});
+    const cookie = response.headers.get('set-cookie').split(';')[0];
+    service.engine.update({model: 'demo/gpt-6-astra', expected: 'gpt-6-astra', effort: 'default', mode: 'observe', intervalMinutes: 30});
+    const gate = fs.readFileSync(path.join(directory, 'gate.js'), 'utf8');
+    const stop = headers => fetch(service.origin + '/api/service/stop', {method: 'POST', headers, body: '{}'});
+    assert.equal((await stop({Origin: service.origin})).status, 401);
+    assert.equal((await stop({cookie, Origin: 'https://evil.example'})).status, 403);
+    const update = await fetch(service.origin + '/api/updates', {headers: {cookie}});
+    assert.equal((await update.json()).mode, 'magpie');
+    assert.equal((await stop({cookie, Origin: service.origin})).status, 200);
+    await new Promise(r => setTimeout(r, 120));
+    assert.equal(closed, 1); assert.equal(service.engine.snapshot().targets[0].scheduleEnabled, false);
+    assert.equal(fs.readFileSync(path.join(directory, 'gate.js'), 'utf8'), gate);
+    assert.equal(fs.existsSync(path.join(directory, 'runtime.json')), false);
+    await assert.rejects(fetch(service.origin + '/health'));
+  } finally { await service.close(); fs.rmSync(directory, {recursive: true}); }
+});
+
 test('console keeps its address and authenticated browser session after a host restart', async () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'workbench-restart-'));
   const config = {directory, gateFile: path.join(directory, 'workbench.middleware.js'), options: {gatewayUrl: 'http://127.0.0.1:1'}};
