@@ -2,7 +2,7 @@ import {readFileSync, existsSync} from 'node:fs';
 import vm from 'node:vm';
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {onRequest} from '../codex-history.middleware.js';
+import {onRequest} from '../history/codex-history.middleware.js';
 
 const ctx = vm.createContext({});
 vm.runInContext(readFileSync(new URL('../history/page/settings.js', import.meta.url), 'utf8'), ctx);

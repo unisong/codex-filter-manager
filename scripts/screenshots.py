@@ -33,7 +33,7 @@ record = {'key': 'demo-key', 'providerId': 'demo-main', 'providerName': provider
 history = [{**record, 'id': f'demo-history-{i}', 'source': 'manual' if i == 0 else 'automatic', 'checkedAt': (now - timedelta(minutes=30*i)).isoformat()} for i in range(24)]
 history[1].update(status='unverified', prediction='gpt-6-luna', score=.999, sampleEvidence=[fixture_evidence['different']], reason='演示数据：已完成轮次有明显模型差异，复核未完成；没有新增持久锁定。')
 history[2].update(status='unverified', score=None, prediction=None, sampleEvidence=[], reason='检测上游返回 HTTP 403：上游拒绝访问。演示数据，这不是降智结论。')
-state = {'providers': providers, 'revision': 'demo-revision', 'productVersion': '1.0.8', 'currentPolicy': {'filter': True}, 'autoFailover': False,
+state = {'providers': providers, 'revision': 'demo-revision', 'productVersion': '1.0.9', 'currentPolicy': {'filter': True}, 'autoFailover': False,
     'aliasCompatibility': {'configured': False, 'enabled': False, 'activeCount': 0},
     'filter': {'filterVersion': version, 'state': 'filtering', 'stats': {'filteredRequests': 128, 'removedEncryptedContentItems': 436}},
     'guard': {'models': ['gpt-6-astra', 'gpt-6-sol'], 'providers': {'demo-main': {'enabled': True, 'ttlSeconds': 1800}}, 'settingsRevision': 'demo-guard', 'records': [record], 'history': history, 'historyLimit': 100, 'current': {'providerId': 'demo-main', 'model': record['model'], 'effort': record['effort'], 'available': True, 'key': record['key']}}}

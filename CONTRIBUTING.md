@@ -33,6 +33,8 @@ CC Switch 服务启动会接管当前用户的 Codex 配置；Magpie 使用独�
 | `vendor/modeltrace/` | 固定版本的第三方出题器、评分器、参考库与许可 |
 | `Start.bat` 等 | Windows 一键启动、停止和状态入口；实现位于 `scripts/windows/` |
 
+根目录与 `magpie-workbench/` 顶层只允许白名单内的条目，测试文件只能位于 `tests/` 或 `magpie-workbench/test/`，`npm run release:check` 会拒绝其他位置。完整 Magpie 插件需要自包含加载，少量共享文件保留副本并由该检查校验一致；具体清单和规则见 [AGENTS.md](AGENTS.md)。
+
 ## 命令行与自定义路径
 
 在项目目录执行，`stop`、`status`、`diagnose` 使用与 `start` 相同的路径参数：

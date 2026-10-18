@@ -1,6 +1,6 @@
 {
   "name": "magpie-model-workbench",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Full local Magpie Codex workbench maintained in Codex Filter Manager",
   "type": "module",
   "private": true,
@@ -17,9 +17,7 @@
     "Diagnose.bat",
     "tools",
     "README.md",
-    "LICENSE",
-    "PROVENANCE.json",
-    "codex-history.middleware.js"
+    "LICENSE"
   ],
   "repository": {
     "type": "git",

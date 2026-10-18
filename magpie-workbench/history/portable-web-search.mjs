@@ -1,4 +1,4 @@
-// Native server tools can depend on encrypted reasoning and account-bound IDs.
+// Native server tools can depend on encrypted reasoning and resource-bound IDs.
 // Keep their recorded data as text instead of replaying an incomplete tool item.
 export function portableWebSearch(item) {
   const record = {...item};

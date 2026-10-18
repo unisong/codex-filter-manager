@@ -1,6 +1,6 @@
 """Optional native GUI integration test. Uses a disposable portable Magpie and loopback mock only.
 
-python test/magpie-page-smoke.py --binary /path/to/magpie.exe [--screenshot docs/settings.png]
+python test/magpie-page-smoke.py --binary /path/to/magpie.exe [--screenshot ../.runtime/native-page.png]
 Requires Playwright + Chromium. Never uses the installed Magpie profile.
 """
 from pathlib import Path

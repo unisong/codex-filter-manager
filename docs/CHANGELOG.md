@@ -2,6 +2,13 @@
 
 完整历史版本可从 [GitHub Releases](https://github.com/unisong/codex-filter-manager/releases) 获取。服务版本号单独记录在 `src/proxy.cjs`，产品版本号来自根目录 `package.json`。
 
+## v1.0.9 / 服务 v34
+
+- 修复 Windows 冷启动时进程查询超时，导致 PID 被其他进程复用后，旧 `service.json` 仍阻止启动或停止的问题。现在先用快速查询比对进程启动时间，不再依赖可能超时的命令行查询。v1.0.8 标签的 CI 就是因此失败。
+- 删除 Magpie 插件根目录下重复的历史钩子副本、过期的 `PROVENANCE.json`，以及 7 张未被文档引用、仍显示旧 v0.2.1 界面的截图；测试统一使用 `history/` 下的固定基线。
+- 新增 `AGENTS.md` 记录目录与提交规则。`release:check` 增加根目录和插件目录白名单、测试文件位置检查，并按暂存内容校验共享副本与公开钩子，避免把本机 Magpie 生成的暂停规则提交进仓库。
+- 过滤、检测和界面行为不变。
+
 ## v1.0.8 / 服务 v34
 
 - 统一 CC Switch 与 Magpie 工作台的页面层级：顶部只保留一次应用标题，页面内按“当前状态 → 主操作 → 配置列表 → 技术说明”组织内容。

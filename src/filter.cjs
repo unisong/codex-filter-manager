@@ -23,10 +23,20 @@ function alive(pid) {
   try { process.kill(pid, 0); return true; }
   catch (error) { return error.code !== 'ESRCH'; }
 }
+const run = (file, args) => execFileSync(file, args,
+  {encoding: 'utf8', timeout: 10000, windowsHide: true, stdio: ['ignore', 'pipe', 'ignore']}).trim();
+// Windows start time from Get-Process: fast, unlike a cold CIM/WMI query that can exceed the timeout
+// on a freshly booted machine. Returns a timestamp, NaN when unreadable, null when the PID has exited.
+function windowsStartTime(pid) {
+  const script = "$p = Get-Process -Id " + pid + " -ErrorAction SilentlyContinue; "
+    + "if ($p) { try { $p.StartTime.ToUniversalTime().ToString('o') } catch { 'unknown' } }";
+  try {
+    const output = run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script]);
+    return output ? Date.parse(output) : null;
+  } catch { return NaN; }
+}
 // Returns {commandLine, createdAt} for a live PID, null when no such process exists, undefined when unknown.
 function inspectProcess(pid) {
-  const run = (file, args) => execFileSync(file, args,
-    {encoding: 'utf8', timeout: 10000, windowsHide: true, stdio: ['ignore', 'pipe', 'ignore']}).trim();
   try {
     if (process.platform === 'win32') {
       const script = "$p = Get-CimInstance Win32_Process -Filter 'ProcessId=" + pid + "'; if ($p) { ConvertTo-Json -Compress "
@@ -45,13 +55,20 @@ function inspectProcess(pid) {
 function ownsProcess(record) {
   if (!record || !alive(record.pid)) return false;
   const startedAt = Date.parse(record.startedAt);
+  const sameStart = createdAt => !Number.isFinite(startedAt) || !Number.isFinite(createdAt)
+    || Math.abs(createdAt - startedAt) <= 60000;
   // Uptime is reliable across suspend on Unix; on Windows the creation date below is authoritative.
   if (process.platform !== 'win32' && Number.isFinite(startedAt)
       && startedAt < Date.now() - os.uptime() * 1000 - 60000) return false;
+  if (process.platform === 'win32') {
+    // A reused PID almost always has a different start time; reject it before the slow command-line query.
+    const createdAt = windowsStartTime(record.pid);
+    if (createdAt === null || !sameStart(createdAt)) return false;
+  }
   const info = inspectProcess(record.pid);
   if (info === undefined) return true; // Cannot verify; stay conservative and never kill or override it.
   if (info === null) return false;
-  if (Number.isFinite(startedAt) && Number.isFinite(info.createdAt) && Math.abs(info.createdAt - startedAt) > 60000) return false;
+  if (!sameStart(info.createdAt)) return false;
   return info.commandLine.includes(path.basename(__filename)) && /(^|\s)serve(\s|$)/.test(info.commandLine);
 }
 function request(origin, route, token, method = 'GET', maxBytes = 65536) {

@@ -989,3 +989,24 @@ test('stale service.json whose PID was reused by another process no longer block
   // Matching command line but a start time from another boot or generation is still stale.
   if (process.platform === 'win32') assert.equal(ownsProcess({...live, startedAt: stale.startedAt}), false);
 });
+
+test('reused PID is still recognized as stale when the slow Windows process query times out', {skip: process.platform !== 'win32', timeout: 30000}, () => {
+  // Cold CI runners can exceed the CIM timeout; the start-time check must not depend on it.
+  const script = `
+    const cp = require('node:child_process');
+    const original = cp.execFileSync;
+    cp.execFileSync = (file, args, options) => {
+      if (String(args?.at(-1)).includes('Get-CimInstance')) throw Object.assign(new Error('simulated timeout'), {code: 'ETIMEDOUT'});
+      return original(file, args, options);
+    };
+    const {ownsProcess} = require(${JSON.stringify(path.join(__dirname, '..', 'src', 'filter.cjs'))});
+    const startedAt = new Date(Date.now() - process.uptime() * 1000).toISOString();
+    console.log(JSON.stringify({
+      reused: ownsProcess({pid: process.pid, startedAt: new Date(Date.now() - 86400000).toISOString()}),
+      unverifiedSameStart: ownsProcess({pid: process.pid, startedAt})
+    }));`;
+  const result = spawnSync(process.execPath, ['-e', script], {encoding: 'utf8', windowsHide: true, timeout: 25000});
+  assert.equal(result.status, 0, result.stderr);
+  // A different start time is rejected without the command line; an unverifiable same-start process stays protected.
+  assert.deepEqual(JSON.parse(result.stdout.trim().split('\n').pop()), {reused: false, unverifiedSameStart: true});
+});

@@ -1,7 +1,7 @@
 import {readFileSync} from 'node:fs';
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import * as mod from '../codex-history.middleware.js';
+import * as mod from '../history/codex-history.middleware.js';
 
 const cases = JSON.parse(readFileSync(new URL('../../tests/fixtures/magpie-cases.json', import.meta.url), 'utf8'));
 test('only the request hook is exported', () => {

@@ -4,7 +4,7 @@
 
 **Windows 10 / 11 · 无需管理员权限 · 首次启动自动准备 Node.js · MIT**
 
-当前版本：**v1.0.8 / 服务 v34**。[下载最新版](https://github.com/unisong/codex-filter-manager/releases/latest) · [更新记录](docs/CHANGELOG.md) · [问题反馈](https://github.com/unisong/codex-filter-manager/issues)
+当前版本：**v1.0.9 / 服务 v34**。[下载最新版](https://github.com/unisong/codex-filter-manager/releases/latest) · [更新记录](docs/CHANGELOG.md) · [问题反馈](https://github.com/unisong/codex-filter-manager/issues)
 
 ## 两种版本
 
@@ -67,6 +67,7 @@ magpie plugin add /path/to/codex-filter-manager/magpie-workbench
 ![同页调整监测](docs/images/monitor-settings.png)
 ![检测记录](docs/images/history.png)
 ![供应商设置](docs/images/provider-settings.png)
+![设置与诊断](docs/images/settings.png)
 ![深色主题](docs/images/protection-dark.png)
 
 </details>
@@ -123,6 +124,7 @@ powershell -File tests/launcher/launcher-check.ps1
 目录职责、命令行参数、浏览器测试和提交要求见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 ```text
+AGENTS.md                仓库目录与提交规则（也供 AI 编码助手读取）
 filter.cjs               稳定 CLI 入口
 src/                     CC Switch 服务、过滤、模型保护与诊断
 web/                     CC Switch 管理页面与共享静态资源
