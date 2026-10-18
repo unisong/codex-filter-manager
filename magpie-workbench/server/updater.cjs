@@ -39,6 +39,24 @@ function checksum(text, name) {
   if (matches.length !== 1) throw Error('发布包缺少唯一的 SHA-256 校验值。');
   return matches[0][1].toLowerCase();
 }
+function normalizeDownloadDirectory(value) {
+  if (typeof value !== 'string' || !value.trim()) throw Error('请输入更新下载与暂存目录的绝对路径。');
+  const unquoted = value.trim().replace(/^"(.*)"$/, '$1');
+  if (unquoted.includes('\0') || !path.isAbsolute(unquoted)) throw Error('更新下载与暂存目录必须是绝对路径。');
+  const resolved = path.resolve(unquoted);
+  if (resolved === path.parse(resolved).root) throw Error('不能直接使用磁盘根目录，请选择其中一个文件夹。');
+  return resolved;
+}
+function prepareDownloadDirectory(value) {
+  const resolved = normalizeDownloadDirectory(value);
+  fs.mkdirSync(resolved, {recursive: true});
+  if (!fs.statSync(resolved).isDirectory()) throw Error('所选更新下载与暂存位置不是文件夹。');
+  const probe = path.join(resolved, '.codex-filter-write-' + randomUUID());
+  try { fs.writeFileSync(probe, '', {flag: 'wx', mode: 0o600}); }
+  catch { throw Error('所选更新下载与暂存目录不可写，请更换目录。'); }
+  finally { try { fs.unlinkSync(probe); } catch {} }
+  return resolved;
+}
 async function download(url, maxBytes, fetcher, {timeout = 30000, accept = 'application/octet-stream', onProgress} = {}) {
   const response = await fetcher(url, {headers: {'User-Agent': 'codex-filter-manager-updater', Accept: accept},
     signal: AbortSignal.timeout(timeout)});
@@ -86,21 +104,54 @@ function createUpdater({root, directory, currentVersion, mode = 'ccswitch', help
   fetcher = fetch, platform = process.platform, spawnHelper = launch, now = Date.now}) {
   let releases = [], checking = null, working = null;
   const resultFile = path.join(directory, 'update-result.json');
+  const settingsFile = path.join(directory, 'update-settings.json');
+  const defaultDownloadDirectory = path.join(directory, 'updates');
+  let configuredDownloadDirectory = null;
+  try {
+    const saved = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
+    if (saved?.version === 1 && typeof saved.downloadDirectory === 'string') {
+      configuredDownloadDirectory = normalizeDownloadDirectory(saved.downloadDirectory);
+    }
+  } catch {}
   let state = {currentVersion, checkedAt: null, phase: 'idle', progress: null, error: null};
+  const downloadDirectory = () => configuredDownloadDirectory || defaultDownloadDirectory;
   function snapshot() {
     let result;
     try { result = JSON.parse(fs.readFileSync(resultFile, 'utf8')); } catch {}
     if (result?.phase === 'installing' && now() - Date.parse(result.at || '') > 10 * 60000) {
       result = {...result, phase: 'failed', message: '更新超过十分钟仍未完成，请查看更新日志和服务状态后重试。'};
     }
+    const resultAt = Date.parse(result?.at || '');
+    if (['installed', 'ready', 'failed'].includes(result?.phase)
+        && (!Number.isFinite(resultAt) || now() - resultAt > 24 * 60 * 60 * 1000)) result = null;
+    if (result?.phase === 'ready' && (!result.target || !fs.existsSync(result.target))) result = null;
+    if (['installed', 'ready'].includes(result?.phase) && compareVersions(result.tag, currentVersion) < 0) result = null;
     const supported = platform === 'win32';
     const sourceCheckout = fs.existsSync(path.join(root, '.git')) || (mode === 'magpie' && fs.existsSync(path.join(root, '..', '.git')));
-    return {...state, mode, releases: [...releases].sort(newestFirst).map(({tag, notes, size, page}) => ({tag, notes, size, page})),
+    return {...state, mode, downloadDirectory: downloadDirectory(), defaultDownloadDirectory,
+      downloadDirectoryCustom: !!configuredDownloadDirectory,
+      releases: [...releases].sort(newestFirst).map(({tag, notes, size, page}) => ({tag, notes, size, page})),
       canInstall: supported && (mode === 'magpie' || !sourceCheckout),
       installLabel: mode === 'magpie' ? '下载并准备新版' : '安装并重启',
       installReason: !supported ? '一键安装仅支持 Windows；可从版本链接下载。'
         : mode === 'ccswitch' && sourceCheckout ? '当前是 Git 源码目录，为保护未提交修改，请通过 Git 更新。' : '',
-      result: result && {phase: result.phase, message: result.message, target: result.target, tag: result.tag}};
+      result: result && {phase: result.phase, message: result.message, target: result.target, tag: result.tag, at: result.at}};
+  }
+  function configureDownloadDirectory(value) {
+    if (working || checking || snapshot().result?.phase === 'installing') throw Error('更新操作进行中，暂不能修改下载目录。');
+    if (value === null || value === '') {
+      try { fs.unlinkSync(settingsFile); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+      configuredDownloadDirectory = null;
+      return snapshot();
+    }
+    const resolved = prepareDownloadDirectory(value);
+    const temp = settingsFile + '.' + randomUUID() + '.tmp';
+    try {
+      fs.writeFileSync(temp, JSON.stringify({version: 1, downloadDirectory: resolved}, null, 2) + '\n', {flag: 'wx', mode: 0o600});
+      fs.renameSync(temp, settingsFile);
+    } finally { try { fs.unlinkSync(temp); } catch {} }
+    configuredDownloadDirectory = resolved;
+    return snapshot();
   }
   async function check() {
     if (working) throw Error('正在准备更新，请稍后再检查。');
@@ -127,7 +178,7 @@ function createUpdater({root, directory, currentVersion, mode = 'ccswitch', help
     if (!release || !state.checkedAt || now() - Date.parse(state.checkedAt) > 3600000) throw Error('请先重新检查更新，再选择列表中的版本。');
     state = {...state, phase: 'downloading', progress: {kind: 'checksum', received: 0, total: null, percent: null}, error: null};
     working = (async () => {
-      const job = path.join(directory, 'updates', randomUUID());
+      const job = path.join(downloadDirectory(), randomUUID());
       try {
         fs.mkdirSync(job, {recursive: true});
         const sums = await download(release.sums, 65536, fetcher);
@@ -153,13 +204,14 @@ function createUpdater({root, directory, currentVersion, mode = 'ccswitch', help
         state = {...state, phase: 'idle', progress: null};
       } catch (error) {
         state = {...state, phase: 'idle', progress: null, error: '更新失败：' + error.message};
-        try { fs.writeFileSync(resultFile, JSON.stringify({phase: 'failed', tag, message: state.error})); } catch {}
+        try { fs.writeFileSync(resultFile, JSON.stringify({phase: 'failed', tag, at: new Date(now()).toISOString(), message: state.error})); } catch {}
       }
     })().finally(() => { working = null; });
     return snapshot();
   }
-  return {snapshot, check, install, get busy() { return !!working || snapshot().result?.phase === 'installing'; },
+  return {snapshot, check, install, configureDownloadDirectory,
+    get busy() { return !!working || snapshot().result?.phase === 'installing'; },
     // Useful to wait for the bounded download when shutting down or in offline tests.
     settle: () => working || Promise.resolve()};
 }
-module.exports = {createUpdater, selectReleases, checksum, newer, compareVersions};
+module.exports = {createUpdater, selectReleases, checksum, newer, compareVersions, normalizeDownloadDirectory};

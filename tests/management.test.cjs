@@ -26,20 +26,21 @@ function fixture(t) {
 const off={historyFilter:false,preserveEncryptedInclude:true,stripResponsesLiteHeader:false};
 const on={...off,historyFilter:true};
 test('browser shutdown and update writes enforce origin and token, and expose stop failures', async t => {
-  const f = fixture(t); let stops = 0, checks = 0, installs = 0, rejectStop = false;
+  const f = fixture(t); let stops = 0, checks = 0, installs = 0, settings = 0, rejectStop = false;
   const manager = createManagement({...f, onStop: () => { if (rejectStop) throw Error('restore failed'); stops++; },
-    updater: {snapshot: () => ({phase: 'idle'}), check: async () => { checks++; }, install: () => { installs++; return {}; }}});
+    updater: {snapshot: () => ({phase: 'idle'}), check: async () => { checks++; }, install: () => { installs++; return {}; },
+      configureDownloadDirectory: () => { settings++; return {}; }}});
   const server = makeProxy({token: 'offline-token', dashboard: manager, getUpstream: () => 'http://127.0.0.1:1'});
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   t.after(async () => { server.closeAllConnections(); await new Promise(r => server.close(r)); });
   const origin = 'http://127.0.0.1:' + server.address().port;
   const call = (route, headers = {}) => fetch(origin + ADMIN + '/api' + route, {method: 'POST', headers, body: '{}'});
-  for (const route of ['/service/stop', '/updates/check', '/updates/install']) {
+  for (const route of ['/service/stop', '/updates/check', '/updates/install', '/updates/settings']) {
     assert.equal((await call(route, {Origin: origin})).status, 403);
     assert.equal((await call(route, {Origin: 'https://evil.example', 'x-filter-token': 'offline-token'})).status, 403);
     assert.equal((await call(route, {Origin: origin, 'x-filter-token': 'offline-token'})).status, 200);
   }
-  assert.deepEqual([stops, checks, installs], [1, 1, 1]);
+  assert.deepEqual([stops, checks, installs, settings], [1, 1, 1, 1]);
   rejectStop = true;
   const rejected = await call('/service/stop', {Origin: origin, 'x-filter-token': 'offline-token'});
   assert.equal(rejected.status, 409); assert.match((await rejected.json()).error.message, /restore failed/);

@@ -71,7 +71,9 @@ with sync_playwright() as p:
         elif request.url.endswith('/api/state'):
             route.fulfill(content_type='application/json', body=json.dumps(state, ensure_ascii=False))
         elif request.url.endswith('/api/updates'):
-            route.fulfill(json={'currentVersion': product_version, 'releases': [], 'phase': 'idle', 'canInstall': True, 'checkedAt': None, 'error': None})
+            route.fulfill(json={'currentVersion': product_version, 'releases': [], 'phase': 'idle', 'canInstall': True,
+                                'checkedAt': None, 'error': None, 'downloadDirectory': r'D:\CodexUpdates',
+                                'defaultDownloadDirectory': r'D:\CodexUpdates', 'downloadDirectoryCustom': False})
         elif request.url.endswith(('/workbench-theme.css', '/current-selection.js', '/service-controls.js')):
             asset = root / 'web/assets' / request.url.rsplit('/', 1)[-1]
             route.fulfill(content_type='text/css' if asset.suffix == '.css' else 'text/javascript', body=asset.read_bytes())

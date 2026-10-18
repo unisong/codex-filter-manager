@@ -16,6 +16,8 @@ magpie plugin add /path/to/codex-filter-manager/magpie-workbench
 
 只需要过滤时，在 Magpie 的 **Codex Workbench · 历史过滤** 页面设置，在插件页检查启用状态、调用和错误；无需登录或打开本机工作台。需要模型监测时，Windows 双击 `Open.bat`，其他系统使用 Magpie 的本机控制台入口。该入口仅打开本机页面，不提供推理模型。
 
+工作台的 **设置与诊断 → 版本更新** 支持填写自定义更新下载与暂存目录。目录必须是可写的绝对路径；恢复默认只影响后续更新，不会删除已经下载、准备或备份的文件。
+
 ## 维护与边界
 
 完整功能与 UI 的开发、Issue 和 Release 都进入主仓库。社区包 `@magpie-community/middleware-codex-history` 不包含本目录。两者的版本号独立，只有过滤修复需要同步。

@@ -79,7 +79,14 @@ test('browser stop requires the local session, stops schedules and closes only t
     assert.equal((await stop({Origin: service.origin})).status, 401);
     assert.equal((await stop({cookie, Origin: 'https://evil.example'})).status, 403);
     const update = await fetch(service.origin + '/api/updates', {headers: {cookie}});
-    assert.equal((await update.json()).mode, 'magpie');
+    const updateState = await update.json();
+    assert.equal(updateState.mode, 'magpie');
+    const custom = path.join(directory, 'custom updates');
+    const configured = await fetch(service.origin + '/api/updates/settings', {method: 'POST', headers: {cookie, Origin: service.origin, 'Content-Type': 'application/json'},
+      body: JSON.stringify({downloadDirectory: custom})});
+    assert.equal(configured.status, 200);
+    assert.equal((await configured.json()).downloadDirectory, custom);
+    assert.equal((await (await fetch(service.origin + '/api/updates', {headers: {cookie}})).json()).downloadDirectory, custom);
     assert.equal((await stop({cookie, Origin: service.origin})).status, 200);
     await new Promise(r => setTimeout(r, 120));
     assert.equal(closed, 1); assert.equal(service.engine.snapshot().targets[0].scheduleEnabled, false);

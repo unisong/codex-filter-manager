@@ -30,10 +30,27 @@
     const progressValue = el('span', ''); progressValue.id = 'updateProgressValue';
     const progress = el('progress'); progress.id = 'updateProgress'; progress.max = 100;
     progress.setAttribute('aria-labelledby', 'updateProgressLabel');
-    progressHead.append(progressLabel, progressValue); progressWrap.append(progressHead, progress);
+    const flow = el('div', '', 'service-update-flow'); flow.id = 'updateFlow'; flow.hidden = true;
+    flow.setAttribute('aria-hidden', 'true'); flow.append(el('span'));
+    progressHead.append(progressLabel, progressValue); progressWrap.append(progressHead, progress, flow);
     const description = el('p', magpie
       ? '手动检查 GitHub 正式版本。新版下载并校验后，在 Magpie 切换插件目录；不会覆盖运行中的插件。'
       : '手动检查 GitHub 正式版本。安装前备份程序文件，保留本机规则与记录；安装后自动重启过滤服务。', 'muted');
+    const destination = el('div', '', 'service-update-destination');
+    const destinationHead = el('div', '', 'service-update-destination-head');
+    destinationHead.append(el('strong', '下载与暂存目录'),
+      el('span', '更新包、解压结果和回滚备份会保存在这里', 'muted'));
+    const destinationRow = el('div', '', 'service-update-destination-row');
+    const directory = el('input'); directory.id = 'updateDownloadDirectory'; directory.type = 'text';
+    directory.spellcheck = false; directory.autocomplete = 'off';
+    directory.setAttribute('aria-describedby', 'updateDownloadDirectoryHint');
+    const saveDirectory = el('button', '保存', 'button'); saveDirectory.id = 'saveUpdateDirectory';
+    saveDirectory.type = 'button'; saveDirectory.disabled = true;
+    const resetDirectory = el('button', '恢复默认', 'button quiet'); resetDirectory.id = 'resetUpdateDirectory';
+    resetDirectory.type = 'button'; resetDirectory.disabled = true;
+    const directoryHint = el('p', '正在读取下载目录…', 'muted'); directoryHint.id = 'updateDownloadDirectoryHint';
+    destinationRow.append(directory, saveDirectory, resetDirectory);
+    destination.append(destinationHead, destinationRow, directoryHint);
     const row = el('div', '', 'service-update-actions');
     const label = el('label', '可选更新 '), select = el('select'); select.id = 'updateVersion'; label.htmlFor = select.id; label.append(select);
     const install = el('button', magpie ? '下载并准备新版' : '安装并重启', 'button primary');
@@ -48,7 +65,16 @@
     const readyPath = el('input'); readyPath.readOnly = true; readyPath.setAttribute('aria-label', '新版 Magpie 插件目录');
     readyPath.onclick = () => readyPath.select();
     ready.append(el('p', '新版已准备好。在 Magpie 中将本地插件目录切换为下方路径，然后重新加载。模型设置与记录继续使用原来的本机数据目录。'), readyPath);
-    panel.append(head, description, summary, progressWrap, row, reason, notes, result, ready); settings.prepend(panel);
+    panel.append(head, description, destination, summary, progressWrap, row, reason, notes, result, ready); settings.prepend(panel);
+    const completed = el('div', '', 'service-update-complete'); completed.id = 'updateComplete'; completed.hidden = true;
+    completed.setAttribute('role', 'status'); completed.setAttribute('aria-live', 'polite');
+    const completedMark = el('span', '✓', 'service-update-complete-mark');
+    const completedText = el('div');
+    const completedTitle = el('strong', '更新完成'), completedDetail = el('p');
+    completedText.append(completedTitle, completedDetail);
+    const completedClose = el('button', '关闭提示', 'quiet'); completedClose.type = 'button'; completedClose.setAttribute('aria-label', '关闭更新完成提示');
+    completed.append(completedMark, completedText, completedClose);
+    tools.closest('header').after(completed);
     const dialog = el('dialog', '', 'service-confirm'); dialog.id = 'serviceConfirm';
     const form = el('form'); form.method = 'dialog';
     const heading = el('h2'), message = el('p'), actions = el('div', '', 'service-update-actions');
@@ -60,8 +86,21 @@
       dialog.returnValue = ''; dialog.addEventListener('close', () => resolve(dialog.returnValue === 'ok'), {once: true});
       dialog.showModal(); cancel.focus();
     });
-    let state, timer, recovering = false, recoveryStarted = 0;
+    let state, timer, recovering = false, recoveryStarted = 0, directoryDirty = false;
     const busy = () => state && (['checking', 'downloading'].includes(state.phase) || state.result?.phase === 'installing');
+    const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+    const completionKey = result => `codex-filter-update-complete:${result?.tag || ''}:${result?.phase || ''}`;
+    const dismissCompletion = () => {
+      completed.hidden = true;
+      if (state?.result) try { sessionStorage.setItem(completionKey(state.result), '1'); } catch {}
+    };
+    completedClose.onclick = dismissCompletion;
+    directory.oninput = () => {
+      directoryDirty = true;
+      saveDirectory.disabled = false;
+      directoryHint.textContent = '修改后点击“保存”才会生效。';
+      directoryHint.dataset.kind = '';
+    };
     const showSelection = () => {
       const release = state?.releases.find(r => r.tag === select.value);
       notes.hidden = !release;
@@ -90,6 +129,13 @@
       check.disabled = active; check.textContent = state.phase === 'checking' ? '正在检查…' : '检查更新';
       check.setAttribute('aria-busy', String(state.phase === 'checking'));
       stop.disabled = active; select.disabled = active; install.disabled = active || !state.canInstall || !state.releases.length;
+      directory.disabled = active; saveDirectory.disabled = active || !directoryDirty;
+      resetDirectory.disabled = active || !state.downloadDirectoryCustom;
+      if (!directoryDirty && document.activeElement !== directory) directory.value = state.downloadDirectory || '';
+      directoryHint.textContent = state.downloadDirectoryCustom
+        ? '当前为自定义目录。更新任务和回滚备份会保留在该目录中，请在确认新版运行正常后自行清理。'
+        : `当前使用默认目录。可改为其他磁盘或文件夹，例如 D:\\CodexUpdates。默认：${state.defaultDownloadDirectory || state.downloadDirectory || ''}`;
+      directoryHint.dataset.kind = state.downloadDirectoryCustom ? 'custom' : '';
       row.hidden = !state.releases.length; reason.textContent = state.installReason;
       summary.textContent = `当前 v${state.currentVersion} · ` + (state.phase === 'checking' ? '正在连接 GitHub…'
         : state.phase === 'downloading' ? '正在下载发布包…'
@@ -100,11 +146,24 @@
       result.textContent = r?.phase === 'installed' ? `${r.tag} 已安装并重启，本机规则与记录已保留。`
         : r?.phase === 'ready' ? `${r.tag} 已下载并通过校验。`
         : r?.phase === 'failed' ? '更新未完成：' + r.message : '';
+      panel.dataset.success = String(r?.phase === 'installed' || r?.phase === 'ready');
+      const succeeded = r?.phase === 'installed' || r?.phase === 'ready';
+      let dismissed = false;
+      if (succeeded) try { dismissed = sessionStorage.getItem(completionKey(r)) === '1'; } catch {}
+      completed.hidden = !succeeded || dismissed;
+      if (succeeded) {
+        completedTitle.textContent = r.phase === 'installed' ? '更新安装完成' : '新版本下载完成';
+        completedDetail.textContent = r.phase === 'installed'
+          ? `${r.tag} 已安装并重启，本机规则和检测记录均已保留。`
+          : `${r.tag} 已下载、校验并解压，可以按下方路径切换 Magpie 插件。`;
+      }
       ready.hidden = r?.phase !== 'ready'; readyPath.value = r?.target || '';
       const p = state.progress;
       const installing = r?.phase === 'installing';
       progressWrap.hidden = !(state.phase === 'downloading' || installing);
       if (!progressWrap.hidden) {
+        progressWrap.dataset.state = 'progress';
+        flow.hidden = true; progress.hidden = false;
         const kind = installing ? '准备更新' : p?.kind === 'checksum' ? '获取校验文件' : p?.kind === 'verify' ? '校验发布包' : '下载发布包';
         const receivedMb = Number.isFinite(p?.received) ? (p.received / 1048576).toFixed(1) : null;
         const totalMb = Number.isFinite(p?.total) ? (p.total / 1048576).toFixed(1) : null;
@@ -139,6 +198,23 @@
         check.disabled = false; stop.disabled = false; controls.suspended = false; recovering = false;
       }
     }
+    async function saveDestination(value) {
+      directoryDirty = false; saveDirectory.disabled = true; resetDirectory.disabled = true;
+      directoryHint.textContent = '正在验证目录并保存…'; directoryHint.dataset.kind = '';
+      try {
+        const next = await api('/updates/settings', {downloadDirectory: value});
+        render(next);
+        directoryHint.textContent = '下载与暂存目录已保存，下次更新立即使用。';
+        directoryHint.dataset.kind = 'saved';
+      } catch (error) {
+        directoryDirty = true; saveDirectory.disabled = false;
+        resetDirectory.disabled = !state?.downloadDirectoryCustom;
+        directoryHint.textContent = error.message;
+        directoryHint.dataset.kind = 'error';
+      }
+    }
+    saveDirectory.onclick = () => saveDestination(directory.value);
+    resetDirectory.onclick = () => saveDestination(null);
     select.onchange = showSelection;
     check.onclick = async () => {
       check.disabled = true; check.textContent = '正在检查…';
@@ -151,10 +227,25 @@
         ? '下载到独立目录并校验。现有插件继续运行，完成后按提示在 Magpie 切换目录。'
         : '请先结束正在进行的 Codex 调用。安装会停止过滤服务及检测，备份程序文件后安装新版；失败时尝试恢复旧版。本机规则与记录会保留。', magpie ? '下载新版' : '安装并重启')) return;
       install.disabled = true;
+      completed.hidden = true;
+      progressWrap.hidden = false; progressWrap.dataset.state = 'pending';
+      progressLabel.textContent = '正在启动下载…'; progressValue.textContent = '加载中';
+      progress.hidden = true; flow.hidden = false;
+      progress.removeAttribute('value');
+      const startedAt = Date.now();
       try {
-        render(await api('/updates/install', {tag}));
+        const initial = await api('/updates/install', {tag});
+        await wait(Math.max(0, 1100 - (Date.now() - startedAt)));
+        render(initial);
         recovering = !magpie; recoveryStarted = Date.now(); controls.suspended = !magpie;
-      } catch (error) { summary.textContent = error.message; install.disabled = false; }
+      } catch (error) {
+        progressWrap.hidden = true;
+        progressWrap.dataset.state = 'idle';
+        progress.hidden = false; flow.hidden = true;
+        panel.dataset.error = 'true';
+        summary.textContent = '更新未能开始：' + error.message;
+        install.disabled = !state?.canInstall || !state?.releases?.length;
+      }
     };
     stop.onclick = async () => {
       if (!await confirm(magpie ? '关闭本机工作台？' : '关闭过滤服务？', magpie

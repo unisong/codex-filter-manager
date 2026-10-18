@@ -4,7 +4,7 @@
 
 **Windows 10 / 11 · 无需管理员权限 · 首次启动自动准备 Node.js · MIT**
 
-当前版本：**v1.0.12 / 服务 v37**。[下载最新版](https://github.com/unisong/codex-filter-manager/releases/latest) · [更新记录](docs/CHANGELOG.md) · [问题反馈](https://github.com/unisong/codex-filter-manager/issues)
+当前版本：**v1.0.13 / 服务 v38**。[下载最新版](https://github.com/unisong/codex-filter-manager/releases/latest) · [更新记录](docs/CHANGELOG.md) · [问题反馈](https://github.com/unisong/codex-filter-manager/issues)
 
 ## 两种版本
 
@@ -58,7 +58,7 @@ magpie plugin add /path/to/codex-filter-manager/magpie-workbench
 
 ## 关闭与更新
 
-在 **设置与诊断 → 版本更新** 点击「检查更新」，版本按从新到旧排列，选择比当前版本新的正式版本，查看说明后按需更新。下载过程中显示字节进度与百分比。打开页面不会自动检查、下载或安装，也不会调用模型。
+在 **设置与诊断 → 版本更新** 点击「检查更新」，版本按从新到旧排列，选择比当前版本新的正式版本，查看说明后按需更新。即使发布包很小，页面也会显示加载动画；下载结束后会在页面顶部显示醒目的成功提示。更新包、解压结果和回滚备份默认保存在运行数据目录，也可以改为其他可写文件夹。打开页面不会自动检查、下载或安装，也不会调用模型。
 
 | 环境 | 关闭按钮 | 更新方式 |
 | --- | --- | --- |

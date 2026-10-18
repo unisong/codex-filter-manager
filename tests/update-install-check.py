@@ -24,12 +24,14 @@ required = ['src/filter.cjs', 'scripts/windows/start.ps1', 'web/dashboard.html',
             'magpie-workbench/plugin/index.mjs', 'magpie-workbench/workbench.middleware.js']
 
 with tempfile.TemporaryDirectory(prefix='filter-update-install-') as scratch:
-    for scenario in ['install', 'background', 'rollback', 'traversal', 'checksum', 'magpie']:
+    for scenario in ['install', 'install-custom', 'background', 'rollback', 'traversal', 'checksum', 'magpie']:
         base = Path(scratch) / scenario
         install = base / 'installed space \u4e2d\u6587'
         data = install / '.runtime'
-        job = data / 'updates' / 'offline-job'
+        job = (base / 'downloads 中文' / 'offline-job') if scenario == 'install-custom' else (data / 'updates' / 'offline-job')
         job.mkdir(parents=True)
+        install.mkdir(parents=True, exist_ok=True)
+        data.mkdir(parents=True, exist_ok=True)
         (install / 'filter.cjs').write_text(old_entry, encoding='utf-8')
         (install / 'package.json').write_text('{"version":"1.0.9"}', encoding='utf-8')
         (data / 'provider-rules.json').write_text('{"private":"unchanged"}', encoding='utf-8')
@@ -93,10 +95,10 @@ const asset=n=>({name:n,size:bytes.length,browser_download_url:'https://github.c
                 time.sleep(0.1)
         output = json.loads(result.read_text(encoding='utf-8'))
         assert (data / 'provider-rules.json').read_bytes() == private_bytes
-        if scenario in ['install', 'background']:
+        if scenario in ['install', 'install-custom', 'background']:
             assert process.returncode == 0 and output['phase'] == 'installed', output
             assert json.loads((install / 'package.json').read_text())['version'] == '1.2.0'
-            backups = list((data / 'updates').glob('*/backup/filter.cjs'))
+            backups = list(job.parent.glob('*/backup/filter.cjs'))
             assert len(backups) == 1 and backups[0].read_text() == old_entry
         elif scenario == 'magpie':
             assert process.returncode == 0 and output['phase'] == 'ready', output

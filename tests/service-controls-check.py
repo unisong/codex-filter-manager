@@ -41,23 +41,34 @@ with tempfile.TemporaryDirectory(prefix='filter-controls-ui-') as scratch:
                 errors = []
                 page.on('pageerror', lambda e: errors.append(str(e)))
                 state = dict(currentVersion='1.0.9', releases=[], phase='idle', checkedAt=None,
-                             progress=None, mode=mode, canInstall=True, installReason='', error=None)
+                             progress=None, mode=mode, canInstall=True, installReason='', error=None,
+                             downloadDirectory=r'C:\Demo\.runtime\updates', defaultDownloadDirectory=r'C:\Demo\.runtime\updates',
+                             downloadDirectoryCustom=False)
                 checks = []
                 download_finished = False
                 install_finished = False
+                reject_install = False
                 def update(route):
                     url = route.request.url
+                    body = route.request.post_data_json or {} if route.request.post_data else {}
                     if route.request.method == 'GET' and state['phase'] == 'downloading' and download_finished:
                         state.update(phase='idle', progress={'kind': 'verify', 'received': 12000, 'total': 12000, 'percent': 100},
                                      result={'phase': 'installing', 'tag': 'v1.10.0'})
                     if route.request.method == 'GET' and install_finished:
                         state.update(progress=None,
                                      result={'phase': 'ready', 'tag': 'v1.10.0', 'target': r'C:\Demo\new-version\magpie-workbench'}
-                                     if mode == 'magpie' else {'phase': 'failed', 'tag': 'v1.10.0', 'message': 'SHA-256 mismatch'})
+                                     if mode == 'magpie' else {'phase': 'installed', 'tag': 'v1.10.0', 'target': r'C:\Demo'})
                     if url.endswith('/check'):
                         checks.append('check')
                         state.update(phase='checking')
+                    elif url.endswith('/settings'):
+                        custom = body.get('downloadDirectory')
+                        state.update(downloadDirectory=custom or state['defaultDownloadDirectory'],
+                                     downloadDirectoryCustom=bool(custom))
                     elif url.endswith('/install'):
+                        if reject_install:
+                            return route.fulfill(status=409, content_type='application/json',
+                                                 body=json.dumps({'error': {'message': '测试拒绝安装'}}))
                         state.update(phase='downloading', progress={'kind': 'archive', 'received': 5040, 'total': 12000, 'percent': 42})
                     elif state['phase'] == 'checking':
                         state.update(phase='idle', checkedAt='2026-10-18T00:00:00Z', releases=[
@@ -76,6 +87,16 @@ with tempfile.TemporaryDirectory(prefix='filter-controls-ui-') as scratch:
                 expect(page.locator('#checkUpdates')).to_have_text('正在检查…')
                 expect(page.locator('#updateVersion')).to_have_value('v1.10.0', timeout=7000)
                 expect(page.locator('#updateVersion option').first).to_have_text('v1.10.0 · 最新')
+                expect(page.locator('#updateDownloadDirectory')).to_have_value(r'C:\Demo\.runtime\updates')
+                page.locator('#updateDownloadDirectory').fill(r'D:\Codex updates')
+                page.locator('#saveUpdateDirectory').click()
+                expect(page.locator('#updateDownloadDirectoryHint')).to_contain_text('已保存')
+                expect(page.locator('#resetUpdateDirectory')).to_be_enabled()
+                page.locator('#resetUpdateDirectory').click()
+                expect(page.locator('#updateDownloadDirectory')).to_have_value(r'C:\Demo\.runtime\updates')
+                page.locator('#updateDownloadDirectory').fill(r'D:\Codex updates')
+                page.locator('#saveUpdateDirectory').click()
+                expect(page.locator('#updateDownloadDirectoryHint')).to_contain_text('已保存')
                 if os.environ.get('UI_ARTIFACT_DIR'):
                     output = Path(os.environ['UI_ARTIFACT_DIR'])
                     output.mkdir(parents=True, exist_ok=True)
@@ -89,7 +110,14 @@ with tempfile.TemporaryDirectory(prefix='filter-controls-ui-') as scratch:
                 page.locator('#installUpdate').click()
                 page.locator('#serviceConfirm button[value=ok]').click()
                 expect(page.locator('#updateProgressWrap')).to_be_visible()
+                expect(page.locator('#updateProgressWrap')).to_have_attribute('data-state', 'pending')
+                expect(page.locator('#updateProgressValue')).to_have_text('加载中')
+                expect(page.locator('#updateFlow')).to_be_visible()
+                expect(page.locator('#updateProgress')).to_be_hidden()
+                if os.environ.get('UI_ARTIFACT_DIR'):
+                    page.screenshot(path=str(output / (mode + '-download-pending.png')), full_page=True)
                 expect(page.locator('#updateProgress')).to_have_attribute('value', '42')
+                expect(page.locator('#updateFlow')).to_be_hidden()
                 expect(page.locator('#updateProgressValue')).to_have_text('42%')
                 expect(page.locator('#stopService')).to_be_disabled()
                 expect(page.locator('#installUpdate')).to_be_disabled()
@@ -105,7 +133,19 @@ with tempfile.TemporaryDirectory(prefix='filter-controls-ui-') as scratch:
                 expect(page.locator('#updateProgressValue')).to_have_text('进行中')
                 expect(page.locator('#updateProgress')).not_to_have_attribute('value', '100')
                 install_finished = True
-                expect(page.locator('#updateResult')).to_contain_text('已下载' if mode == 'magpie' else '更新未完成')
+                expect(page.locator('#updateComplete')).to_be_visible(timeout=7000)
+                expect(page.locator('#updateComplete')).to_contain_text('下载完成' if mode == 'magpie' else '安装完成')
+                expect(page.locator('#updateResult')).to_contain_text('已下载' if mode == 'magpie' else '已安装')
+                if os.environ.get('UI_ARTIFACT_DIR'):
+                    page.screenshot(path=str(output / (mode + '-download-complete.png')), full_page=True)
+                page.locator('#updateComplete button').click()
+                expect(page.locator('#updateComplete')).to_be_hidden()
+                reject_install = True
+                page.locator('#installUpdate').click()
+                page.locator('#serviceConfirm button[value=ok]').click()
+                expect(page.locator('#updateProgressWrap')).to_be_hidden()
+                expect(page.locator('#updateStatus')).to_contain_text('测试拒绝安装')
+                expect(page.locator('#installUpdate')).to_be_enabled()
                 for dark in [False, True]:
                     if dark:
                         page.locator('#themeToggle').click()

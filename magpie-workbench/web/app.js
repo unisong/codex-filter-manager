@@ -91,7 +91,9 @@
     const r = await fetch('/api/' + path, {method: body === undefined ? 'GET' : 'POST',
       headers: body === undefined ? {} : {'Content-Type': 'application/json'},
       body: body === undefined ? undefined : JSON.stringify(body)});
-    const value = await r.json(); if (!r.ok) throw Error(value.error || '操作未完成'); return value;
+    const value = await r.json();
+    if (!r.ok) throw Error((typeof value.error === 'string' ? value.error : value.error?.message) || '操作未完成');
+    return value;
   }
   function button(text, action, cls = '') {
     const b = el('button', cls, text);

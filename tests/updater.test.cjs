@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const {createHash} = require('node:crypto');
-const {createUpdater, selectReleases, checksum, newer, compareVersions} = require('../src/updater.cjs');
+const {createUpdater, selectReleases, checksum, newer, compareVersions, normalizeDownloadDirectory} = require('../src/updater.cjs');
 const archive = Buffer.from('offline archive fixture');
 const digest = createHash('sha256').update(archive).digest('hex');
 function release(tag = 'v1.2.0', extra = {}) {
@@ -79,6 +79,48 @@ test('reading update state is offline; verified download creates a structured pl
   assert.deepEqual(plan.restart, ['--config', 'a path with spaces']); assert.equal(plan.sha256, digest);
   assert.equal(fs.readFileSync(plan.archive).toString(), archive.toString());
   assert.equal(f.updater.snapshot().result.phase, 'installing');
+});
+test('custom download directory is writable, persistent and used for update jobs', async t => {
+  const f = setup(t), custom = path.join(f.root, 'custom updates');
+  assert.equal(f.updater.snapshot().downloadDirectory, path.join(f.directory, 'updates'));
+  assert.throws(() => normalizeDownloadDirectory('relative/path'), /绝对路径/);
+  assert.throws(() => normalizeDownloadDirectory(path.parse(f.root).root), /磁盘根目录/);
+  const configured = f.updater.configureDownloadDirectory(`"${custom}"`);
+  assert.equal(configured.downloadDirectoryCustom, true);
+  assert.equal(configured.downloadDirectory, custom);
+  f.updater.configureDownloadDirectory(custom);
+  const marker = path.join(custom, 'keep.txt'); fs.writeFileSync(marker, 'keep');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(f.directory, 'update-settings.json'), 'utf8')).downloadDirectory, custom);
+  const helper = path.join(f.root, 'helper.ps1');
+  const reopened = createUpdater({root: f.root, directory: f.directory, currentVersion: '1.0.9', platform: 'win32',
+    helper, spawnHelper: async () => {}});
+  assert.equal(reopened.snapshot().downloadDirectory, custom);
+  const restored = reopened.configureDownloadDirectory(null);
+  assert.equal(restored.downloadDirectoryCustom, false);
+  assert.equal(restored.downloadDirectory, path.join(f.directory, 'updates'));
+  assert.equal(fs.existsSync(path.join(f.directory, 'update-settings.json')), false);
+  assert.equal(fs.readFileSync(marker, 'utf8'), 'keep');
+  await f.updater.check(); f.updater.install('v1.2.0'); await f.updater.settle();
+  const plan = JSON.parse(fs.readFileSync(f.spawned[0][1], 'utf8'));
+  assert.equal(path.dirname(plan.job), custom);
+  assert.equal(fs.existsSync(plan.archive), true);
+});
+test('stale or misplaced completion notices are not presented as current success', t => {
+  let now = Date.parse('2026-10-18T12:00:00Z');
+  const f = setup(t, {now: () => now}), resultFile = path.join(f.directory, 'update-result.json');
+  fs.writeFileSync(resultFile, JSON.stringify({phase: 'ready', tag: 'v1.2.0', target: path.join(f.root, 'missing'),
+    at: new Date(now).toISOString()}));
+  assert.equal(f.updater.snapshot().result, null);
+  const target = path.join(f.root, 'prepared'); fs.mkdirSync(target);
+  fs.writeFileSync(resultFile, JSON.stringify({phase: 'ready', tag: 'v1.2.0', target,
+    at: new Date(now).toISOString()}));
+  assert.equal(f.updater.snapshot().result.phase, 'ready');
+  fs.writeFileSync(resultFile, JSON.stringify({phase: 'failed', tag: 'v1.2.0', message: 'legacy result without timestamp'}));
+  assert.equal(f.updater.snapshot().result, null);
+  fs.writeFileSync(resultFile, JSON.stringify({phase: 'ready', tag: 'v1.2.0', target,
+    at: new Date(now).toISOString()}));
+  now += 25 * 60 * 60 * 1000;
+  assert.equal(f.updater.snapshot().result, null);
 });
 test('checksum mismatch never launches an installer', async t => {
   const f = setup(t, {fetcher: async url => new Response(url.includes('api.github.com') ? JSON.stringify([release()])

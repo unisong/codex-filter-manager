@@ -1,6 +1,6 @@
 {
   "name": "magpie-model-workbench",
-  "version": "1.0.12",
+  "version": "1.0.13",
   "description": "Full local Magpie Codex workbench maintained in Codex Filter Manager",
   "type": "module",
   "private": true,

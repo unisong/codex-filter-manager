@@ -99,6 +99,10 @@ function createManagement({databasePath, runtime, guard, updater, onStop, log = 
         if (updater.busy) throw new FilterError('update_busy', '正在准备更新，请稍后再检查。', 409);
         updater.check().catch(() => {}); return updater.snapshot();
       }
+      if (updater && route === '/updates/settings' && method === 'POST') {
+        try { return updater.configureDownloadDirectory(payload.downloadDirectory); }
+        catch (error) { throw new FilterError('update_settings_rejected', error.message, 409); }
+      }
       if (updater && route === '/updates/install' && method === 'POST') {
         try { return updater.install(payload.tag); }
         catch (error) { throw new FilterError('update_rejected', error.message, 409); }

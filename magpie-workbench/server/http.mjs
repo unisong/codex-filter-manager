@@ -104,6 +104,10 @@ export async function createService({directory, gateFile, magpieDirectory, packa
           if (updater.busy) throw fail('正在准备更新，请稍后再检查。', 409);
           updater.check().catch(() => {}); return reply(res, 200, updater.snapshot());
         }
+        if (pathname === '/api/updates/settings') {
+          try { return reply(res, 200, updater.configureDownloadDirectory(body.downloadDirectory)); }
+          catch (error) { throw fail(error.message, 409); }
+        }
         if (pathname === '/api/updates/install') {
           try { return reply(res, 200, updater.install(body.tag)); }
           catch (error) { throw fail(error.message, 409); }
