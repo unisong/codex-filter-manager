@@ -189,6 +189,11 @@ def main():
         log.close()
         upstream.shutdown()
         upstream.server_close()
+        # Keep the small evidence files, but not a full copy of the Magpie binary per run.
+        try:
+            binary.unlink(missing_ok=True)
+        except OSError:
+            print('Copied Magpie binary retained:', binary, flush=True)
 
 
 if __name__ == '__main__':

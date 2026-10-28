@@ -24,9 +24,9 @@ Magpie 只提供两种选择：本仓库的完整工作台，或社区市场的�
 magpie plugin add @magpie-community/middleware-codex-history
 ```
 
-此版本仅提供历史过滤，无额外 UI、工作台、模型检测或保护。在 **Plugins → Installed → 本插件 → Options** 中按供应商设置，默认全部关闭；不需要启动本仓库的服务。
+此版本只提供历史过滤与可选的 DeepSeek 协议转码兼容，无额外 UI、工作台、模型检测或保护。在 **Plugins → Installed → 本插件 → Options** 中按供应商设置，默认全部关闭；不需要启动本仓库的服务。
 
-社区市场目前分发 v0.1.1，尚未包含 DeepSeek 协议转码兼容。需要该兼容时，可以安装[插件仓库](https://github.com/unisong/magpie-codex-history-filter/releases/latest)的最新 GitHub Release，并只为实际上游为 DeepSeek、且拒绝根联合类型的供应商设置 `"deepSeekObjectRoot": true`。社区审核通过后，市场版本会同步更新。
+DeepSeek 协议转码兼容从插件 v0.1.2 起提供，只为实际上游为 DeepSeek、且拒绝根联合类型的供应商设置 `"deepSeekObjectRoot": true`。市场版本以 Magpie 插件页显示为准；市场尚未分发所需版本时，可按[插件仓库](https://github.com/unisong/magpie-codex-history-filter/releases/latest)对应的 GitHub 标签安装，安装文件与社区包一致。
 
 [社区插件源码与配置示例](https://github.com/unisong/magpie-codex-history-filter)
 

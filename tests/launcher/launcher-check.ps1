@@ -15,6 +15,7 @@ $powershell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powersh
 $originalLocation = Get-Location
 $checks = New-Object 'Collections.Generic.List[string]'
 $serviceStarted = $false
+$passed = $false
 
 function Read-SharedText {
     param([string]$Path)
@@ -178,8 +179,21 @@ try {
     } finally { $foreignListener.Stop() }
 
     $checks | ForEach-Object { Write-Host ('PASS ' + $_) }
-    Write-Host ('All ' + $checks.Count + ' offline launcher checks passed. Fixture retained at: ' + $scratch)
+    Write-Host ('All ' + $checks.Count + ' offline launcher checks passed.')
+    $passed = $true
 } finally {
     if ($serviceStarted) { Invoke-LauncherFixture 'Stop' | Out-Null }
     Set-Location $originalLocation
+    # Each fixture holds a full Node.js runtime; keep it only when a check failed.
+    $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
+    $fixtureRoot = [IO.Path]::GetFullPath($scratch)
+    $removed = $false
+    if ($passed -and $fixtureRoot.StartsWith($tempRoot, [StringComparison]::OrdinalIgnoreCase) -and
+        (Split-Path -Leaf $fixtureRoot).StartsWith('codex-filter-launcher-')) {
+        foreach ($attempt in 1..10) {
+            try { Remove-Item -LiteralPath $fixtureRoot -Recurse -Force -ErrorAction Stop; $removed = $true; break }
+            catch { Start-Sleep -Milliseconds 300 }
+        }
+    }
+    if (-not $removed) { Write-Host ('Fixture retained at: ' + $scratch) }
 }
