@@ -1,0 +1,43 @@
+name: 过滤未生效 / 运行异常
+description: 提交可复现问题与脱敏诊断，勿上传配置或整个日志目录。
+title: "[问题] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        服务版请点击「检查运行状态 / 导出诊断」，管理页打不开可运行 Diagnose.bat。
+        Magpie 市场独立插件的问题请到 https://github.com/unisong/magpie-codex-history-filter/issues 反馈。
+        只上传工具生成的诊断 JSON；不要上传整个 .runtime、config.toml、plugins.json、数据库、会话或凭据。
+  - type: dropdown
+    id: integration
+    attributes:
+      label: 使用方式
+      options: [CC Switch 独立服务, Magpie 配合管理服务, 不确定]
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: 工具版本、Codex 与 CC Switch / Magpie 版本
+      placeholder: "例如：工具 1.x / 服务 vxx；Codex x；Magpie x"
+    validations:
+      required: true
+  - type: input
+    id: time
+    attributes:
+      label: 发生时间和时区
+      placeholder: "例如：2026-10-16 15:30，UTC+8"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 操作步骤、预期行为与实际报错
+      description: 包含新/旧会话、是否切换供应商、何时重启客户端；请删除隐私内容。
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: 脱敏诊断报告
+      description: 把导出的 JSON 拖到这里，或粘贴报告。报告可能包含旧运行的事件，请标注复现时间。

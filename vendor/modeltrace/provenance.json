@@ -1,0 +1,20 @@
+{
+  "repository": "https://github.com/xqy2006/ModelTrace",
+  "commit": "6cd4a8ff0f3f4e49d6d6969dd2fbadfa1569fde2",
+  "license": "MIT",
+  "files": {
+    "fingerprint-core.mjs": {
+      "source": "static/fingerprint-core.js",
+      "sha256": "adff55637f6c0534c2c10703e028d4d1970d325e8daecb55efaa7f95a1938d5c"
+    },
+    "unified_bank.json": {
+      "source": "data/unified_bank.json",
+      "sha256": "eeab6ff54d6ffb2b294ebfd6cce25bce387f7a268b66759144f64c16f6c66b9f"
+    },
+    "challenge-browser.mjs": {
+      "source": "static/challenge-browser.js",
+      "sha256": "4a3868c9fe237cabde92f0d2bffaf32118f558f7a43fcc336874fecd2bf6be39"
+    }
+  },
+  "adaptation": "Unmodified scorer, browser challenge generator and reference bank; loaded by the local Responses proxy guard. Closed-set weights are not calibrated identity confidence or reasoning-quality measurements."
+}

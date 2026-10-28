@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Codex 过滤管理</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+  <script src="_magpie/bridge.js" defer></script>
+  <script src="settings.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+<main>
+  <header>
+    <div class="brand"><img src="icon.svg" width="40" height="40" alt=""><div><h1>Codex 过滤管理 <span class="version">v1.0.19</span></h1><p data-t="subtitle">按供应商管理旧会话历史过滤</p></div></div>
+    <button id="refresh" type="button" disabled data-t="refresh">刷新列表</button>
+  </header>
+  <section class="intro" aria-label="过滤规则说明"><div class="intro-main"><strong data-t="introTitle">选择需要兼容旧会话的供应商</strong><p data-t="intro">开启后清理旧推理密文和可移植历史的服务器 ID。所有供应商默认关闭，普通正文和工具结果会保留。</p></div><details><summary>使用范围与工作台关系</summary><p class="muted" data-t="scope">只用历史过滤，在本页设置即可；运行情况可到 Magpie 扩展／插件页面查看，无需登录或打开独立工作台。需要模型监测与保护时，再打开本地工作台。</p></details></section>
+  <div class="toolbar">
+    <label class="search"><span class="sr-only" data-t="searchLabel">搜索供应商</span><input id="search" type="search" placeholder="搜索供应商名称或 ID" disabled></label>
+    <button id="enabledOnly" type="button" aria-pressed="false" disabled>只看已开启 · 0</button>
+    <span id="count" class="muted"></span>
+  </div>
+  <p id="notice" role="status" aria-live="polite">正在连接 Magpie…</p>
+  <div class="columns has-schema" aria-hidden="true"><span data-t="provider">供应商</span><span data-t="filter">历史过滤</span><span data-t="include">保留新响应密文</span><span data-t="objectRoot">DeepSeek Schema</span></div>
+  <div id="providers" aria-label="Providers"></div>
+  <p id="empty" class="empty" hidden></p>
+  <details class="help"><summary data-t="helpTitle">这些开关有什么区别？</summary><p data-t="helpFilter">历史过滤：清理请求中旧 reasoning、明确标记的加密内容和可移植条目的服务器 ID，缓解切换供应商后的历史验证错误。</p><p data-t="helpInclude">保留新响应密文：保留客户端对新响应 reasoning.encrypted_content 的请求，建议开启。不会保留旧历史中的密文；只有开启历史过滤时才生效。</p><p data-t="helpObjectRoot">DeepSeek Schema：只在对应上游为 DeepSeek 时开启，将 automation_update 的工具 Schema 根联合类型折叠为对象。续聊历史中的 tool_search_output 与 additional_tools 也会处理，其他供应商保持关闭。</p><p data-t="helpAliases">已有别名会继续生效，列表会显示实际使用的规则。未出现在当前列表中的已存规则会保留。自动路由组和 fallback 可能改变最终上游，规则按进入钩子时的模型前缀匹配。</p><p data-t="helpRuntime">保存成功表示设置已写入；插件是否在运行，请到 Magpie 插件页查看启用状态、调用数和错误。页面不能读取运行中钩子的统计。</p></details>
+  <footer>
+    <div><strong id="saveState"></strong><p class="muted" data-t="saveHint">保存后用于后续请求，无需重启 Codex。</p></div>
+    <div class="actions"><button id="discard" type="button" disabled data-t="discard">撤销修改</button><button id="save" type="button" class="primary" disabled data-t="save">保存更改</button></div>
+  </footer>
+</main>
+</body>
+</html>

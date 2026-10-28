@@ -1,0 +1,50 @@
+{
+  "name": "magpie-model-workbench",
+  "version": "1.0.19",
+  "description": "Full local Magpie Codex workbench maintained in Codex Filter Manager",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "main": "./plugin/index.mjs",
+  "files": [
+    "plugin",
+    "server",
+    "web",
+    "history",
+    "vendor",
+    "workbench.middleware.js",
+    "Open.bat",
+    "Diagnose.bat",
+    "tools",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/unisong/codex-filter-manager.git",
+    "directory": "magpie-workbench"
+  },
+  "bugs": {
+    "url": "https://github.com/unisong/codex-filter-manager/issues"
+  },
+  "scripts": {
+    "build": "node tools/build-middleware.mjs",
+    "test": "node --test test/*.test.mjs",
+    "start": "node tools/open.mjs"
+  },
+  "magpie": {
+    "middleware": "./workbench.middleware.js",
+    "page": {
+      "title": "Codex Workbench · 历史过滤",
+      "file": "history/page/index.html",
+      "icon": "history/page/icon.svg"
+    },
+    "permissions": [
+      "providers:list"
+    ],
+    "options": {
+      "providers": {},
+      "aliases": {}
+    }
+  }
+}

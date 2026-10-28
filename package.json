@@ -1,0 +1,17 @@
+{
+  "name": "codex-filter-manager",
+  "version": "1.0.19",
+  "private": true,
+  "description": "Local CC Switch / Magpie / Codex history compatibility and model fingerprint protection manager",
+  "license": "MIT",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node filter.cjs start",
+    "stop": "node filter.cjs stop",
+    "status": "node filter.cjs status",
+    "test": "node scripts/test.cjs",
+    "release:check": "node scripts/release-check.cjs"
+  }
+}

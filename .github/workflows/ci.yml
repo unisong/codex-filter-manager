@@ -1,0 +1,41 @@
+name: Offline checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - name: Node tests (isolated temporary fixtures)
+        run: npm test
+      - name: Magpie full workbench tests (no supplier requests)
+        run: |
+          node magpie-workbench/tools/build-middleware.mjs
+          node --test magpie-workbench/test/*.test.mjs
+      - name: Public source checks
+        run: npm run release:check
+      - name: Windows launcher checks (temporary configuration only)
+        shell: powershell
+        run: .\tests\launcher\launcher-check.ps1
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Install browser test tooling
+        run: |
+          python -m pip install playwright==1.56.0
+          python -m playwright install chromium
+      - name: Windows updater checks (disposable releases only)
+        run: python tests/update-install-check.py
+      - name: Browser checks (no supplier requests)
+        run: |
+          python tests/dashboard-check.py
+          python tests/guard-dashboard-check.py
+          python magpie-workbench/test/web-check.py
+          python magpie-workbench/test/filter-ui-check.py
+          python magpie-workbench/test/interval-ui-check.py
+          python magpie-workbench/test/schedule-ui-check.py
+          python tests/service-controls-check.py

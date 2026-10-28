@@ -1,0 +1,105 @@
+import {portableWebSearch} from './portable-web-search.mjs';
+
+// Portable input forms carry their own contents; the server-issued item id is optional.
+// Other tool/resource types may require their IDs, so don't recursively strip IDs.
+const PORTABLE_ITEMS = new Set(['message', 'agent_message', 'function_call', 'function_call_output',
+  'custom_tool_call', 'custom_tool_call_output', 'tool_search_call', 'tool_search_output', 'additional_tools']);
+
+export class FilterError extends Error {
+  constructor(code, message, status = 400) {
+    super(message);
+    this.code = code;
+    this.status = status;
+  }
+}
+
+export function filterResponsesRequest(body, {preserveEncryptedInclude = false} = {}) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    throw new FilterError('invalid_request_json', 'Responses request must be a JSON object.');
+  }
+  if (body.previous_response_id || body.conversation) {
+    throw new FilterError('response_reference_not_portable',
+      'Complete message/tool history is required, not previous_response_id or conversation references. Start a new session with a text summary.');
+  }
+  if (body.include !== undefined && !Array.isArray(body.include)) {
+    throw new FilterError('invalid_include', 'include must be an array.');
+  }
+  if (body.input !== undefined && typeof body.input !== 'string' && !Array.isArray(body.input)) {
+    throw new FilterError('invalid_input', 'input must be a string or an array.');
+  }
+  if (Array.isArray(body.context_management) && body.context_management.some(item => item?.type === 'compaction')) {
+    throw new FilterError('encrypted_compaction_disabled',
+      'Encrypted compaction is disabled by this filter. Use a text summary and start a new session.');
+  }
+  const clean = {...body, store: false};
+  let removed = 0, removedItemIds = 0, removedEncryptedContentItems = 0;
+  // include controls the NEW response, not the historical ciphertext in input.
+  // Some upstreams reject Codex requests when this requested response field is removed.
+  if (body.include) clean.include = preserveEncryptedInclude ? [...body.include]
+    : body.include.filter(value => value !== 'reasoning.encrypted_content');
+  if (Array.isArray(body.input)) {
+    clean.input = body.input.filter(item => {
+      if (item?.type === 'reasoning') { removed++; return false; }
+      return true;
+    });
+    clean.input = clean.input.map(item => {
+      if (item?.type === 'compaction' || item?.type === 'item_reference' || item?.encrypted_content) {
+        throw new FilterError('encrypted_context_not_portable',
+          'Encrypted compaction/context references cannot safely cross accounts. Start a new session with a text summary; history has NOT been silently discarded.');
+      }
+      const isMessage = item && item.type === undefined && typeof item.role === 'string' && item.content !== undefined;
+      if (item && typeof item === 'object') {
+        let portable = removeEncryptedContent(item, () => { removedEncryptedContentItems++; });
+        if (item.type === 'web_search_call') {
+          if (Object.hasOwn(portable, 'id')) removedItemIds++;
+          return portableWebSearch(portable);
+        }
+        if (PORTABLE_ITEMS.has(item.type) || isMessage) {
+          if (Object.hasOwn(portable, 'id')) {
+            if (portable === item) portable = {...item};
+            delete portable.id;
+            removedItemIds++;
+          }
+          return portable;
+        }
+        return portable;
+      }
+      return item;
+    });
+  }
+  // call_id pairs calls/results and is not the server-side item id.
+  // Preserve it, this turn's effort, all message contents, and nested resource IDs.
+  return {body: clean, removed, removedItemIds, removedEncryptedContentItems};
+}
+
+// Historical agent/tool messages can carry account-bound ciphertext inside their
+// content arrays. Rebuild only branches that contain an explicitly typed cipher
+// block, so clean history and unrelated tool payloads keep their object identity.
+function removeEncryptedContent(value, onRemoved) {
+  if (!value || typeof value !== 'object') return value;
+  if (Array.isArray(value)) {
+    let changed = false;
+    const copy = [];
+    for (const item of value) {
+      if (item && item.type === 'encrypted_content') {
+        onRemoved();
+        changed = true;
+        continue;
+      }
+      const cleaned = removeEncryptedContent(item, onRemoved);
+      if (cleaned !== item) changed = true;
+      copy.push(cleaned);
+    }
+    return changed ? copy : value;
+  }
+  const copy = {...value};
+  let changed = false;
+  for (const [key, child] of Object.entries(value)) {
+    const cleaned = removeEncryptedContent(child, onRemoved);
+    if (cleaned !== child) {
+      copy[key] = cleaned;
+      changed = true;
+    }
+  }
+  return changed ? copy : value;
+}

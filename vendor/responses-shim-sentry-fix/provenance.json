@@ -1,0 +1,15 @@
+{
+  "source": "https://github.com/yunhanhai/agentrouter-responses-shim-sentry-fix",
+  "reviewedCommit": "cf33739",
+  "reviewedCommitFull": "cf33739824c62c18eb371af195ef60a996870cec",
+  "reviewedDate": "2026-10-26",
+  "licenseFileSha256": "98f53dc7b34f25300d664d8bbf96b68e6e8f3377352a748ccc026eb113a13411",
+  "integration": "compatibility-scenario-and-regression-tests-only",
+  "scope": "Adopts the reviewed copy-on-write traversal approach and its pooled-upstream regression scenario. No upstream executable, patch, npm package, or runtime dependency is bundled.",
+  "relatedFiles": [
+    "src/history-filter.mjs",
+    "magpie-workbench/history/codex-history.middleware.js",
+    "tests/filter.test.cjs",
+    "magpie-workbench/test/page.test.mjs"
+  ]
+}

@@ -1,0 +1,1333 @@
+[
+  {
+    "name": "default configuration passes history unchanged",
+    "ctx": {
+      "protocol": "responses",
+      "path": "/v1/responses"
+    },
+    "options": {},
+    "request": {
+      "model": "demo/gpt-6-astra",
+      "reasoning": {
+        "effort": "high"
+      },
+      "include": [
+        "reasoning.encrypted_content",
+        "message.output_text.logprobs"
+      ],
+      "input": [
+        {
+          "type": "reasoning",
+          "id": "rs_old",
+          "encrypted_content": "foreign"
+        },
+        {
+          "type": "message",
+          "id": "msg_old",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "Keep answer."
+            },
+            {
+              "type": "encrypted_content",
+              "data": "foreign"
+            }
+          ]
+        },
+        {
+          "type": "function_call",
+          "id": "fc_old",
+          "call_id": "pair",
+          "name": "lookup",
+          "arguments": "{\"id\":\"business\"}"
+        },
+        {
+          "type": "function_call_output",
+          "id": "out_old",
+          "call_id": "pair",
+          "output": "keep result"
+        },
+        {
+          "type": "message",
+          "role": "user",
+          "content": [
+            {
+              "type": "input_file",
+              "file_id": "file_keep"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "unknown provider passes through",
+    "ctx": {
+      "protocol": "responses",
+      "path": "/v1/responses"
+    },
+    "options": {
+      "providers": {
+        "magpie:demo": {
+          "historyFilter": true,
+          "preserveEncryptedInclude": true
+        }
+      }
+    },
+    "request": {
+      "model": "backup/gpt-6-astra",
+      "reasoning": {
+        "effort": "high"
+      },
+      "include": [
+        "reasoning.encrypted_content",
+        "message.output_text.logprobs"
+      ],
+      "input": [
+        {
+          "type": "reasoning",
+          "id": "rs_old",
+          "encrypted_content": "foreign"
+        },
+        {
+          "type": "message",
+          "id": "msg_old",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "Keep answer."
+            },
+            {
+              "type": "encrypted_content",
+              "data": "foreign"
+            }
+          ]
+        },
+        {
+          "type": "function_call",
+          "id": "fc_old",
+          "call_id": "pair",
+          "name": "lookup",
+          "arguments": "{\"id\":\"business\"}"
+        },
+        {
+          "type": "function_call_output",
+          "id": "out_old",
+          "call_id": "pair",
+          "output": "keep result"
+        },
+        {
+          "type": "message",
+          "role": "user",
+          "content": [
+            {
+              "type": "input_file",
+              "file_id": "file_keep"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "disabled provider passes through",
+    "ctx": {
+      "protocol": "responses",
+      "path": "/v1/responses"
+    },
+    "options": {
+      "providers": {
+        "magpie:demo": {
+          "historyFilter": false
+        }
+      }
+    },
+    "request": {
+      "model": "demo/gpt-6-astra",
+      "reasoning": {
+        "effort": "high"
+      },
+      "include": [
+        "reasoning.encrypted_content",
+        "message.output_text.logprobs"
+      ],
+      "input": [
+        {
+          "type": "reasoning",
+          "id": "rs_old",
+          "encrypted_content": "foreign"
+        },
+        {
+          "type": "message",
+          "id": "msg_old",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "Keep answer."
+            },
+            {
+              "type": "encrypted_content",
+              "data": "foreign"
+            }
+          ]
+        },
+        {
+          "type": "function_call",
+          "id": "fc_old",
+          "call_id": "pair",
+          "name": "lookup",
+          "arguments": "{\"id\":\"business\"}"
+        },
+        {
+          "type": "function_call_output",
+          "id": "out_old",
+          "call_id": "pair",
+          "output": "keep result"
+        },
+        {
+          "type": "message",
+          "role": "user",
+          "content": [
+            {
+              "type": "input_file",
+              "file_id": "file_keep"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "non-Responses protocol passes through",
+    "ctx": {
+      "protocol": "anthropic"
+    },
+    "options": {
+      "providers": {
+        "magpie:demo": {
+          "historyFilter": true,
+          "preserveEncryptedInclude": true
+        }
+      }
+    },
+    "request": {
+      "model": "demo/gpt-6-astra",
+      "reasoning": {
+        "effort": "high"
+      },
+      "include": [
+        "reasoning.encrypted_content",
+        "message.output_text.logprobs"
+      ],
+      "input": [
+        {
+          "type": "reasoning",
+          "id": "rs_old",
+          "encrypted_content": "foreign"
+        },
+        {
+          "type": "message",
+          "id": "msg_old",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "Keep answer."
+            },
+            {
+              "type": "encrypted_content",
+              "data": "foreign"
+            }
+          ]
+        },
+        {
+          "type": "function_call",
+          "id": "fc_old",
+          "call_id": "pair",
+          "name": "lookup",
+          "arguments": "{\"id\":\"business\"}"
+        },
+        {
+          "type": "function_call_output",
+          "id": "out_old",
+          "call_id": "pair",
+          "output": "keep result"
+        },
+        {
+          "type": "message",
+          "role": "user",
+          "content": [
+            {
+              "type": "input_file",
+              "file_id": "file_keep"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "bare model cannot accidentally match provider rule",
+    "ctx": {
+      "protocol": "responses",
+      "path": "/v1/responses"
+    },
+    "options": {
+      "providers": {
+        "magpie:demo": {
+          "historyFilter": true,
+          "preserveEncryptedInclude": true
+        }
+      }
+    },
+    "request": {
+      "model": "demo",
+      "reasoning": {
+        "effort": "high"
+      },
+      "include": [
+        "reasoning.encrypted_content",
+        "message.output_text.logprobs"
+      ],
+      "input": [
+        {
+          "type": "reasoning",
+          "id": "rs_old",
+          "encrypted_content": "foreign"
+        },
+        {
+          "type": "message",
+          "id": "msg_old",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "Keep answer."
+            },
+            {
+              "type": "encrypted_content",
+              "data": "foreign"
+            }
+          ]
+        },
+        {
+          "type": "function_call",
+          "id": "fc_old",
+          "call_id": "pair",
+          "name": "lookup",
+          "arguments": "{\"id\":\"business\"}"
+        },
+        {
+          "type": "function_call_output",
+          "id": "out_old",
+          "call_id": "pair",
+          "output": "keep result"
+        },
+        {
+          "type": "message",
+          "role": "user",
+          "content": [
+            {
+              "type": "input_file",
+              "file_id": "file_keep"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "portable history removes ciphertext and IDs but keeps text and call pairs",
+    "ctx": {
+      "protocol": "responses",
+      "path": "/v1/responses"
+    },
+    "options": {
+      "providers": {
+        "magpie:demo": {
+          "historyFilter": true,
+          "preserveEncryptedInclude": true
+        }
+      }
+    },
+    "request": {
+      "model": "demo/gpt-6-astra",
+      "reasoning": {
+        "effort": "high"
+      },
+      "include": [
+        "reasoning.encrypted_content",
+        "message.output_text.logprobs"
+      ],
+      "input": [
+        {
+          "type": "reasoning",
+          "id": "rs_old",
+          "encrypted_content": "foreign"
+        },
+        {
+          "type": "message",
+          "id": "msg_old",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "Keep answer."
+            },
+            {
+              "type": "encrypted_content",
+              "data": "foreign"
+            }
+          ]
+        },
+        {
+          "type": "function_call",
+          "id": "fc_old",
+          "call_id": "pair",
+          "name": "lookup",
+          "arguments": "{\"id\":\"business\"}"
+        },
+        {
+          "type": "function_call_output",
+          "id": "out_old",
+          "call_id": "pair",
+          "output": "keep result"
+        },
+        {
+          "type": "message",
+          "role": "user",
+          "content": [
+            {
+              "type": "input_file",
+              "file_id": "file_keep"
+            }
+          ]
+        }
+      ]
+    },
+    "expect_request": {
+      "model": "demo/gpt-6-astra",
+      "reasoning": {
+        "effort": "high"
+      },
+      "include": [
+        "reasoning.encrypted_content",
+        "message.output_text.logprobs"
+      ],
+      "input": [
+        {
+          "type": "message",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "Keep answer."
+            }
+          ]
+        },
+        {
+          "type": "function_call",
+          "call_id": "pair",
+          "name": "lookup",
+          "arguments": "{\"id\":\"business\"}"
+        },
+        {
+          "type": "function_call_output",
+          "call_id": "pair",
+          "output": "keep result"
+        },
+        {
+          "type": "message",
+          "role": "user",
+          "content": [
+            {
+              "type": "input_file",
+              "file_id": "file_keep"
+            }
+          ]
+        }
+      ],
+      "store": false
+    }
+  },
+  {
+    "name": "filtering twice is idempotent",
+    "ctx": {
+      "protocol": "responses",
+      "path": "/v1/responses"
+    },
+    "options": {
+      "providers": {
+        "magpie:demo": {
+          "historyFilter": true,
+          "preserveEncryptedInclude": true
+        }
+      }
+    },
+    "request": {
+      "model": "demo/gpt-6-astra",
+      "reasoning": {
+        "effort": "high"
+      },
+      "include": [
+        "reasoning.encrypted_content",
+        "message.output_text.logprobs"
+      ],
+      "input": [
+        {
+          "type": "message",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "Keep answer."
+            }
+          ]
+        },
+        {
+          "type": "function_call",
+          "call_id": "pair",
+          "name": "lookup",
+          "arguments": "{\"id\":\"business\"}"
+        },
+        {
+          "type": "function_call_output",
+          "call_id": "pair",
+          "output": "keep result"
+        },
+        {
+          "type": "message",
+          "role": "user",
+          "content": [
+            {
+              "type": "input_file",
+              "file_id": "file_keep"
+            }
+          ]
+        }
+      ],
+      "store": false
+    },
+    "expect_request": {
+      "model": "demo/gpt-6-astra",
+      "reasoning": {
+        "effort": "high"
+      },
+      "include": [
+        "reasoning.encrypted_content",
+        "message.output_text.logprobs"
+      ],
+      "input": [
+        {
+          "type": "message",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "Keep answer."
+            }
+          ]
+        },
+        {
+          "type": "function_call",
+          "call_id": "pair",
+          "name": "lookup",
+          "arguments": "{\"id\":\"business\"}"
+        },
+        {
+          "type": "function_call_output",
+          "call_id": "pair",
+          "output": "keep result"
+        },
+        {
+          "type": "message",
+          "role": "user",
+          "content": [
+            {
+              "type": "input_file",
+              "file_id": "file_keep"
+            }
+          ]
+        }
+      ],
+      "store": false
+    }
+  },
+  {
+    "name": "include compatibility can be turned off",
+    "ctx": {
+      "protocol": "responses",
+      "path": "/v1/responses"
+    },
+    "options": {
+      "providers": {
+        "magpie:demo": {
+          "historyFilter": true,
+          "preserveEncryptedInclude": false
+        }
+      }
+    },
+    "request": {
+      "model": "demo/gpt-6-astra",
+      "reasoning": {
+        "effort": "high"
+      },
+      "include": [
+        "reasoning.encrypted_content",
+        "message.output_text.logprobs"
+      ],
+      "input": [
+        {
+          "type": "reasoning",
+          "id": "rs_old",
+          "encrypted_content": "foreign"
+        },
+        {
+          "type": "message",
+          "id": "msg_old",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "Keep answer."
+            },
+            {
+              "type": "encrypted_content",
+              "data": "foreign"
+            }
+          ]
+        },
+        {
+          "type": "function_call",
+          "id": "fc_old",
+          "call_id": "pair",
+          "name": "lookup",
+          "arguments": "{\"id\":\"business\"}"
+        },
+        {
+          "type": "function_call_output",
+          "id": "out_old",
+          "call_id": "pair",
+          "output": "keep result"
+        },
+        {
+          "type": "message",
+          "role": "user",
+          "content": [
+            {
+              "type": "input_file",
+              "file_id": "file_keep"
+            }
+          ]
+        }
+      ]
+    },
+    "expect_request": {
+      "model": "demo/gpt-6-astra",
+      "reasoning": {
+        "effort": "high"
+      },
+      "include": [
+        "message.output_text.logprobs"
+      ],
+      "input": [
+        {
+          "type": "message",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "Keep answer."
+            }
+          ]
+        },
+        {
+          "type": "function_call",
+          "call_id": "pair",
+          "name": "lookup",
+          "arguments": "{\"id\":\"business\"}"
+        },
+        {
+          "type": "function_call_output",
+          "call_id": "pair",
+          "output": "keep result"
+        },
+        {
+          "type": "message",
+          "role": "user",
+          "content": [
+            {
+              "type": "input_file",
+              "file_id": "file_keep"
+            }
+          ]
+        }
+      ],
+      "store": false
+    }
+  },
+  {
+    "name": "old prefix aliases only select rule and preserve the model",
+    "ctx": {
+      "protocol": "responses",
+      "path": "/v1/responses"
+    },
+    "options": {
+      "providers": {
+        "magpie:demo": {
+          "historyFilter": true,
+          "preserveEncryptedInclude": true
+        }
+      },
+      "aliases": {
+        "old-demo": "demo"
+      }
+    },
+    "request": {
+      "model": "old-demo/gpt-6-astra",
+      "reasoning": {
+        "effort": "high"
+      },
+      "include": [
+        "reasoning.encrypted_content",
+        "message.output_text.logprobs"
+      ],
+      "input": [
+        {
+          "type": "reasoning",
+          "id": "rs_old",
+          "encrypted_content": "foreign"
+        },
+        {
+          "type": "message",
+          "id": "msg_old",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "Keep answer."
+            },
+            {
+              "type": "encrypted_content",
+              "data": "foreign"
+            }
+          ]
+        },
+        {
+          "type": "function_call",
+          "id": "fc_old",
+          "call_id": "pair",
+          "name": "lookup",
+          "arguments": "{\"id\":\"business\"}"
+        },
+        {
+          "type": "function_call_output",
+          "id": "out_old",
+          "call_id": "pair",
+          "output": "keep result"
+        },
+        {
+          "type": "message",
+          "role": "user",
+          "content": [
+            {
+              "type": "input_file",
+              "file_id": "file_keep"
+            }
+          ]
+        }
+      ]
+    },
+    "expect_request": {
+      "model": "old-demo/gpt-6-astra",
+      "reasoning": {
+        "effort": "high"
+      },
+      "include": [
+        "reasoning.encrypted_content",
+        "message.output_text.logprobs"
+      ],
+      "input": [
+        {
+          "type": "message",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "Keep answer."
+            }
+          ]
+        },
+        {
+          "type": "function_call",
+          "call_id": "pair",
+          "name": "lookup",
+          "arguments": "{\"id\":\"business\"}"
+        },
+        {
+          "type": "function_call_output",
+          "call_id": "pair",
+          "output": "keep result"
+        },
+        {
+          "type": "message",
+          "role": "user",
+          "content": [
+            {
+              "type": "input_file",
+              "file_id": "file_keep"
+            }
+          ]
+        }
+      ],
+      "store": false
+    }
+  },
+  {
+    "name": "second configured supplier uses its own include preference",
+    "ctx": {
+      "protocol": "responses",
+      "path": "/v1/responses"
+    },
+    "options": {
+      "providers": {
+        "magpie:demo": {
+          "historyFilter": true,
+          "preserveEncryptedInclude": true
+        },
+        "magpie:backup": {
+          "historyFilter": true,
+          "preserveEncryptedInclude": false
+        }
+      }
+    },
+    "request": {
+      "model": "backup/gpt-6-astra",
+      "reasoning": {
+        "effort": "high"
+      },
+      "include": [
+        "reasoning.encrypted_content",
+        "message.output_text.logprobs"
+      ],
+      "input": [
+        {
+          "type": "reasoning",
+          "id": "rs_old",
+          "encrypted_content": "foreign"
+        },
+        {
+          "type": "message",
+          "id": "msg_old",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "Keep answer."
+            },
+            {
+              "type": "encrypted_content",
+              "data": "foreign"
+            }
+          ]
+        },
+        {
+          "type": "function_call",
+          "id": "fc_old",
+          "call_id": "pair",
+          "name": "lookup",
+          "arguments": "{\"id\":\"business\"}"
+        },
+        {
+          "type": "function_call_output",
+          "id": "out_old",
+          "call_id": "pair",
+          "output": "keep result"
+        },
+        {
+          "type": "message",
+          "role": "user",
+          "content": [
+            {
+              "type": "input_file",
+              "file_id": "file_keep"
+            }
+          ]
+        }
+      ]
+    },
+    "expect_request": {
+      "model": "backup/gpt-6-astra",
+      "reasoning": {
+        "effort": "high"
+      },
+      "include": [
+        "message.output_text.logprobs"
+      ],
+      "input": [
+        {
+          "type": "message",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "Keep answer."
+            }
+          ]
+        },
+        {
+          "type": "function_call",
+          "call_id": "pair",
+          "name": "lookup",
+          "arguments": "{\"id\":\"business\"}"
+        },
+        {
+          "type": "function_call_output",
+          "call_id": "pair",
+          "output": "keep result"
+        },
+        {
+          "type": "message",
+          "role": "user",
+          "content": [
+            {
+              "type": "input_file",
+              "file_id": "file_keep"
+            }
+          ]
+        }
+      ],
+      "store": false
+    }
+  },
+  {
+    "name": "tool search histories keep schemas and call IDs",
+    "ctx": {
+      "protocol": "responses",
+      "path": "/v1/responses"
+    },
+    "options": {
+      "providers": {
+        "magpie:demo": {
+          "historyFilter": true,
+          "preserveEncryptedInclude": true
+        }
+      }
+    },
+    "request": {
+      "model": "demo/gpt-6-astra",
+      "input": [
+        {
+          "type": "tool_search_call",
+          "id": "tsc_old",
+          "call_id": "search_pair",
+          "execution": "client",
+          "arguments": {
+            "query": "lookup"
+          },
+          "status": "completed"
+        },
+        {
+          "type": "tool_search_output",
+          "id": "tso_old",
+          "call_id": "search_pair",
+          "execution": "client",
+          "tools": [
+            {
+              "type": "function",
+              "name": "lookup",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "additional_tools",
+          "id": "tools_old",
+          "role": "developer",
+          "tools": []
+        }
+      ]
+    },
+    "expect_request": {
+      "model": "demo/gpt-6-astra",
+      "store": false,
+      "input": [
+        {
+          "type": "tool_search_call",
+          "call_id": "search_pair",
+          "execution": "client",
+          "arguments": {
+            "query": "lookup"
+          },
+          "status": "completed"
+        },
+        {
+          "type": "tool_search_output",
+          "call_id": "search_pair",
+          "execution": "client",
+          "tools": [
+            {
+              "type": "function",
+              "name": "lookup",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "additional_tools",
+          "role": "developer",
+          "tools": []
+        }
+      ]
+    }
+  },
+  {
+    "name": "custom tools and role-only messages retain content",
+    "ctx": {
+      "protocol": "responses",
+      "path": "/v1/responses"
+    },
+    "options": {
+      "providers": {
+        "magpie:demo": {
+          "historyFilter": true,
+          "preserveEncryptedInclude": true
+        }
+      }
+    },
+    "request": {
+      "model": "demo/gpt-6-astra",
+      "input": [
+        {
+          "type": "custom_tool_call",
+          "id": "ctc_old",
+          "call_id": "custom",
+          "name": "patch",
+          "input": "keep patch"
+        },
+        {
+          "type": "custom_tool_call_output",
+          "id": "ctco_old",
+          "call_id": "custom",
+          "output": "done"
+        },
+        {
+          "role": "user",
+          "id": "msg_old",
+          "content": "Continue"
+        }
+      ]
+    },
+    "expect_request": {
+      "model": "demo/gpt-6-astra",
+      "store": false,
+      "input": [
+        {
+          "type": "custom_tool_call",
+          "call_id": "custom",
+          "name": "patch",
+          "input": "keep patch"
+        },
+        {
+          "type": "custom_tool_call_output",
+          "call_id": "custom",
+          "output": "done"
+        },
+        {
+          "role": "user",
+          "content": "Continue"
+        }
+      ]
+    }
+  },
+  {
+    "name": "unknown server tool resource IDs are not guessed away",
+    "ctx": {
+      "protocol": "responses",
+      "path": "/v1/responses"
+    },
+    "options": {
+      "providers": {
+        "magpie:demo": {
+          "historyFilter": true,
+          "preserveEncryptedInclude": true
+        }
+      }
+    },
+    "request": {
+      "model": "demo/gpt-6-astra",
+      "input": [
+        {
+          "type": "web_search_call",
+          "id": "ws_keep",
+          "status": "completed",
+          "action": {
+            "type": "search",
+            "query": "example"
+          }
+        }
+      ]
+    },
+    "expect_request": {
+      "model": "demo/gpt-6-astra",
+      "store": false,
+      "input": [
+        {
+          "type": "web_search_call",
+          "id": "ws_keep",
+          "status": "completed",
+          "action": {
+            "type": "search",
+            "query": "example"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "plain string input is retained",
+    "ctx": {
+      "protocol": "responses",
+      "path": "/v1/responses"
+    },
+    "options": {
+      "providers": {
+        "magpie:demo": {
+          "historyFilter": true,
+          "preserveEncryptedInclude": true
+        }
+      }
+    },
+    "request": {
+      "model": "demo/gpt-6-astra",
+      "input": "Hello"
+    },
+    "expect_request": {
+      "model": "demo/gpt-6-astra",
+      "input": "Hello",
+      "store": false
+    }
+  },
+  {
+    "name": "reject previous response reference",
+    "ctx": {
+      "protocol": "responses",
+      "path": "/v1/responses"
+    },
+    "options": {
+      "providers": {
+        "magpie:demo": {
+          "historyFilter": true,
+          "preserveEncryptedInclude": true
+        }
+      }
+    },
+    "request": {
+      "model": "demo/gpt-6-astra",
+      "input": "Hello",
+      "previous_response_id": "resp_old"
+    },
+    "reject": {
+      "status": 400,
+      "message": "Codex history filter: Complete message/tool history"
+    }
+  },
+  {
+    "name": "reject conversation reference",
+    "ctx": {
+      "protocol": "responses",
+      "path": "/v1/responses"
+    },
+    "options": {
+      "providers": {
+        "magpie:demo": {
+          "historyFilter": true,
+          "preserveEncryptedInclude": true
+        }
+      }
+    },
+    "request": {
+      "model": "demo/gpt-6-astra",
+      "input": "Hello",
+      "conversation": "conv_old"
+    },
+    "reject": {
+      "status": 400,
+      "message": "Codex history filter: Complete message/tool history"
+    }
+  },
+  {
+    "name": "reject item reference",
+    "ctx": {
+      "protocol": "responses",
+      "path": "/v1/responses"
+    },
+    "options": {
+      "providers": {
+        "magpie:demo": {
+          "historyFilter": true,
+          "preserveEncryptedInclude": true
+        }
+      }
+    },
+    "request": {
+      "model": "demo/gpt-6-astra",
+      "input": [
+        {
+          "type": "item_reference",
+          "id": "item_old"
+        }
+      ]
+    },
+    "reject": {
+      "status": 400,
+      "message": "Codex history filter: Encrypted compaction/context references"
+    }
+  },
+  {
+    "name": "reject encrypted compaction history",
+    "ctx": {
+      "protocol": "responses",
+      "path": "/v1/responses"
+    },
+    "options": {
+      "providers": {
+        "magpie:demo": {
+          "historyFilter": true,
+          "preserveEncryptedInclude": true
+        }
+      }
+    },
+    "request": {
+      "model": "demo/gpt-6-astra",
+      "input": [
+        {
+          "type": "compaction",
+          "encrypted_content": "sealed"
+        }
+      ]
+    },
+    "reject": {
+      "status": 400,
+      "message": "Codex history filter: Encrypted compaction/context references"
+    }
+  },
+  {
+    "name": "reject automatic compaction",
+    "ctx": {
+      "protocol": "responses",
+      "path": "/v1/responses"
+    },
+    "options": {
+      "providers": {
+        "magpie:demo": {
+          "historyFilter": true,
+          "preserveEncryptedInclude": true
+        }
+      }
+    },
+    "request": {
+      "model": "demo/gpt-6-astra",
+      "input": "Hello",
+      "context_management": [
+        {
+          "type": "compaction"
+        }
+      ]
+    },
+    "reject": {
+      "status": 400,
+      "message": "Codex history filter: Encrypted compaction is disabled"
+    }
+  },
+  {
+    "name": "reject invalid include",
+    "ctx": {
+      "protocol": "responses",
+      "path": "/v1/responses"
+    },
+    "options": {
+      "providers": {
+        "magpie:demo": {
+          "historyFilter": true,
+          "preserveEncryptedInclude": true
+        }
+      }
+    },
+    "request": {
+      "model": "demo/gpt-6-astra",
+      "input": "Hello",
+      "include": "reasoning.encrypted_content"
+    },
+    "reject": {
+      "status": 400,
+      "message": "Codex history filter: include must be an array"
+    }
+  },
+  {
+    "name": "reject invalid input",
+    "ctx": {
+      "protocol": "responses",
+      "path": "/v1/responses"
+    },
+    "options": {
+      "providers": {
+        "magpie:demo": {
+          "historyFilter": true,
+          "preserveEncryptedInclude": true
+        }
+      }
+    },
+    "request": {
+      "model": "demo/gpt-6-astra",
+      "input": {
+        "type": "message"
+      }
+    },
+    "reject": {
+      "status": 400,
+      "message": "Codex history filter: input must be a string or an array"
+    }
+  },
+  {
+    "name": "reject compact endpoint",
+    "ctx": {
+      "protocol": "responses",
+      "path": "/v1/responses/compact"
+    },
+    "options": {
+      "providers": {
+        "magpie:demo": {
+          "historyFilter": true,
+          "preserveEncryptedInclude": true
+        }
+      }
+    },
+    "request": {
+      "model": "demo/gpt-6-astra",
+      "input": "Hello"
+    },
+    "reject": {
+      "status": 409,
+      "message": "Codex history filter: encrypted compaction"
+    }
+  }
+]

@@ -1,0 +1,135 @@
+'use strict';
+const {test} = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const http = require('node:http');
+const {once} = require('node:events');
+const {createHash} = require('node:crypto');
+const {DatabaseSync} = require('node:sqlite');
+const {createManagement} = require('../src/management.cjs');
+const {makeProxy, ADMIN} = require('../src/proxy.cjs');
+const {createGuardService} = require('../src/guard-service.cjs');
+
+function fixture(t) {
+  assert.ok(process.env.PI_SCRATCH_DIR);
+  const root=fs.realpathSync(process.env.PI_SCRATCH_DIR), runtime=fs.mkdtempSync(path.join(root,'manager-'));
+  const databasePath=path.join(runtime,'mock.db');
+  const db=new DatabaseSync(databasePath);
+  db.exec("PRAGMA user_version=19; CREATE TABLE providers(id TEXT, name TEXT, app_type TEXT, is_current INTEGER, settings_config TEXT, sort_index INTEGER); CREATE TABLE proxy_config(app_type TEXT, auto_failover_enabled INTEGER); INSERT INTO proxy_config VALUES('codex',0)");
+  const add=(id,url,current=0,name=id)=>db.prepare('INSERT INTO providers VALUES(?,?,?,?,?,?)').run(id,name,'codex',current,JSON.stringify({auth:{OPENAI_API_KEY:'MOCK_SECRET_MUST_NOT_ESCAPE'},config:'model_provider="custom"\n[model_providers.custom]\nbase_url='+JSON.stringify(url)+'\nexperimental_bearer_token="MOCK_SECRET_MUST_NOT_ESCAPE"'}),0);
+  add('relay-main','https://relay-main.example',1); add('new','https://new.example.com',0,'<img src=x onerror=alert(1)>');
+  fs.writeFileSync(path.join(runtime,'legacy-model-aliases.json'),JSON.stringify({enabled:true,databaseVersion:19,aliases:[['ccs-old/gpt-6-astra','gpt-6-astra']]}));
+  t.after(()=>{db.close();assert.equal(path.dirname(fs.realpathSync(runtime)),root);fs.rmSync(runtime,{recursive:true,force:true});});
+  return {runtime,databasePath,db,add,manager:createManagement({runtime,databasePath})};
+}
+const off={historyFilter:false,preserveEncryptedInclude:true,stripResponsesLiteHeader:false};
+const on={...off,historyFilter:true};
+test('browser shutdown and update writes enforce origin and token, and expose stop failures', async t => {
+  const f = fixture(t); let stops = 0, checks = 0, installs = 0, settings = 0, rejectStop = false;
+  const manager = createManagement({...f, onStop: () => { if (rejectStop) throw Error('restore failed'); stops++; },
+    updater: {snapshot: () => ({phase: 'idle'}), check: async () => { checks++; }, install: () => { installs++; return {}; },
+      configureDownloadDirectory: () => { settings++; return {}; }}});
+  const server = makeProxy({token: 'offline-token', dashboard: manager, getUpstream: () => 'http://127.0.0.1:1'});
+  server.listen(0, '127.0.0.1'); await once(server, 'listening');
+  t.after(async () => { server.closeAllConnections(); await new Promise(r => server.close(r)); });
+  const origin = 'http://127.0.0.1:' + server.address().port;
+  const call = (route, headers = {}) => fetch(origin + ADMIN + '/api' + route, {method: 'POST', headers, body: '{}'});
+  for (const route of ['/service/stop', '/updates/check', '/updates/install', '/updates/settings']) {
+    assert.equal((await call(route, {Origin: origin})).status, 403);
+    assert.equal((await call(route, {Origin: 'https://evil.example', 'x-filter-token': 'offline-token'})).status, 403);
+    assert.equal((await call(route, {Origin: origin, 'x-filter-token': 'offline-token'})).status, 200);
+  }
+  assert.deepEqual([stops, checks, installs, settings], [1, 1, 1, 1]);
+  rejectStop = true;
+  const rejected = await call('/service/stop', {Origin: origin, 'x-filter-token': 'offline-token'});
+  assert.equal(rejected.status, 409); assert.match((await rejected.json()).error.message, /restore failed/);
+});
+test('provider overrides persist, supersede defaults, reset and protect against stale edits without changing CCS database',t=>{
+  const f=fixture(t), m=f.manager;
+  const hash=()=>createHash('sha256').update(fs.readFileSync(f.databasePath)).digest('hex');
+  const original=hash(), initial=m.state();
+  assert.equal(m.policy().filter,false);
+  assert.equal(initial.providers.length,2);
+  assert.ok(initial.providers.every(p=>p.source==='default' && p.defaultEnabled===false && p.rule.historyFilter===false && p.rule.stripResponsesLiteHeader===false));
+  assert.equal(JSON.stringify(initial).includes('MOCK_SECRET_MUST_NOT_ESCAPE'),false);
+  const enabled=m.handle('PUT','/providers/relay-main/rule',{rule:on,revision:initial.revision});
+  assert.equal(m.policy().filter,true);
+  assert.equal(enabled.providers.find(p=>p.id==='relay-main').source,'custom');
+  assert.throws(()=>m.handle('PUT','/providers/relay-main/rule',{rule:off,revision:initial.revision}),{code:'rules_changed'});
+  assert.equal(createManagement(f).policy().filter,true);
+  const restored=m.handle('DELETE','/providers/relay-main/rule',{revision:enabled.revision});
+  assert.equal(m.policy().filter,false);
+  assert.equal(restored.providers.find(p=>p.id==='relay-main').source,'default');
+  assert.ok(fs.existsSync(path.join(f.runtime,'provider-rules.json.previous')));
+  assert.equal(hash(),original);
+  assert.throws(()=>m.handle('PUT','/providers/new/rule',{revision:restored.revision,rule:{...on,url:'https://evil'}}),{code:'invalid_rule'});
+  assert.throws(()=>m.handle('PUT','/providers/missing/rule',{revision:restored.revision,rule:on}),{code:'unknown_provider'});
+});
+test('new suppliers appear without code changes; saved overrides follow selection, failover remains passthrough',t=>{
+  const f=fixture(t), m=f.manager;
+  f.add('fresh','https://fresh.example.com');
+  assert.equal(m.state().providers.length,3);
+  m.handle('PUT','/providers/fresh/rule',{rule:on,revision:m.state().revision});
+  f.db.exec("UPDATE providers SET is_current=(id='fresh')");
+  assert.equal(m.policy().filter,true);assert.equal(m.policy().provider,'fresh.example.com');
+  f.db.exec('UPDATE proxy_config SET auto_failover_enabled=1');
+  assert.equal(m.policy().filter,false);assert.equal(m.state().autoFailover,true);
+  f.db.exec("DELETE FROM providers WHERE id='fresh'");
+  assert.equal(m.state().providers.length,2);
+  assert.equal(m.handle('PUT','/aliases',{enabled:false}).aliasCompatibility.activeCount,0);
+  assert.equal(m.handle('PUT','/aliases',{enabled:true}).aliasCompatibility.activeCount,1);
+});
+test('dashboard API requires local host, same origin and control token, preserves proxy browser rejection',async t=>{
+  const f=fixture(t), token='only-local-test-token';
+  const server=makeProxy({getUpstream:()=> 'http://127.0.0.1:1',token,dashboard:f.manager,getFilterPolicy:f.manager.policy});
+  server.listen(0,'127.0.0.1');await once(server,'listening');
+  t.after(async()=>{server.closeAllConnections();await new Promise(r=>server.close(r));});
+  const origin='http://127.0.0.1:'+server.address().port;
+  const call=(route,extra={})=>fetch(origin+ADMIN+route,extra);
+  const html=await call('/ui');assert.equal(html.status,200);assert.match(html.headers.get('content-security-policy'),/frame-ancestors 'none'/);
+  const text=await html.text();assert.match(text,/Codex 过滤管理/);assert.equal(text.includes('__FILTER_TOKEN_JSON__'),false);
+  assert.match(text,/rel="icon"[^>]+favicon\.svg/);
+  const icon=await call('/favicon.svg');assert.equal(icon.status,200);assert.match(icon.headers.get('content-type'),/image\/svg\+xml/);
+  assert.match(await icon.text(),/<svg/);
+  for (const [file, mime] of [['workbench-theme.css', 'text/css'], ['current-selection.js', 'text/javascript']]) {
+    const asset=await call('/'+file); assert.equal(asset.status,200);
+    assert.ok(asset.headers.get('content-type').startsWith(mime));
+    assert.equal(await asset.text(),fs.readFileSync(path.join(__dirname,'..','web','assets',file),'utf8'));
+    assert.equal((await call('/'+file,{headers:{'sec-fetch-site':'cross-site'}})).status,403);
+  }
+  assert.equal((await call('/favicon.svg',{headers:{origin:'https://evil.test'}})).status,403);
+  assert.equal((await call('/api/state')).status,403);
+  assert.equal((await call('/api/state',{headers:{'x-filter-token':token,origin:'http://evil.test'}})).status,403);
+  const wrongHostStatus=await new Promise((resolve,reject)=>{
+    const req=http.get(origin+ADMIN+'/ui',{headers:{host:'evil.test'}},res=>{res.resume();res.on('end',()=>resolve(res.statusCode));});
+    req.on('error',reject);
+  });
+  assert.equal(wrongHostStatus,403);
+  const headers={'x-filter-token':token,origin,'content-type':'application/json'};
+  const r=await call('/api/state',{headers});assert.equal(r.status,200);const state=await r.json();
+  assert.equal(JSON.stringify(state).includes('MOCK_SECRET_MUST_NOT_ESCAPE'),false);
+  assert.equal((await call('/api/providers/relay-main/rule',{method:'PUT',headers,body:JSON.stringify({revision:state.revision,rule:off})})).status,200);
+  assert.equal(f.manager.policy().filter,false);
+  assert.equal((await call('/api/providers/new/rule',{method:'PUT',headers,body:'[]'})).status,400);
+  assert.equal((await fetch(origin+'/v1/responses',{method:'POST',headers:{origin},body:'{}'})).status,403);
+});
+test('guard settings API rejects stale writes without undoing another page enable',async t=>{
+  const f=fixture(t);
+  const guard=createGuardService({runtime:f.runtime,databasePath:f.databasePath,configPath:path.join(f.runtime,'unused.toml'),getUpstream:()=> 'http://127.0.0.1:1'});
+  const manager=createManagement({runtime:f.runtime,databasePath:f.databasePath,guard});
+  const server=makeProxy({getUpstream:()=> 'http://127.0.0.1:1',token:'guard-api-test',dashboard:manager});
+  server.listen(0,'127.0.0.1');await once(server,'listening');
+  t.after(async()=>{server.closeAllConnections();await new Promise(r=>server.close(r));});
+  const base='http://127.0.0.1:'+server.address().port+ADMIN+'/api';
+  const headers={'x-filter-token':'guard-api-test','content-type':'application/json'};
+  const initial=await(await fetch(base+'/state',{headers})).json();
+  assert.deepEqual(initial.guard.providers,{});
+  assert.equal(guard.shouldInspect(),false);
+  const put=payload=>fetch(base+'/guard/providers/relay-main',{method:'PUT',headers,body:JSON.stringify(payload)});
+  const first=await put({enabled:true,ttlSeconds:600,revision:initial.guard.settingsRevision});assert.equal(first.status,200);
+  const second=await put({enabled:false,ttlSeconds:60,revision:initial.guard.settingsRevision});assert.equal(second.status,409);
+  assert.equal((await second.json()).error.code,'guard_settings_changed');
+  assert.equal((await put({enabled:false,ttlSeconds:60})).status,409);
+  const final=await(await fetch(base+'/state',{headers})).json();assert.deepEqual(final.guard.providers['relay-main'],{enabled:true,ttlSeconds:600});
+});
