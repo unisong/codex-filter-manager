@@ -2,10 +2,15 @@
 
 最新版本可从 [GitHub Releases](https://github.com/unisong/codex-filter-manager/releases/latest) 获取；旧发布包和标签已撤回，这里保留各阶段的功能改动记录。服务版本号单独记录在 `src/proxy.cjs`，产品版本号来自根目录 `package.json`。
 
+## 未发布
+
+- 完整工作台的 DeepSeek Schema 折叠只做放宽：联合类型中有无法解析的 `$ref` 或形状未知的分支时，根 `required` 不再取已知分支的交集，避免让模型漏填原本可省略的字段。Codex 实际的 `automation_update` 折叠结果不变，并补充非 DeepSeek 候选逐字节不变的测试。
+- 社区纯过滤插件保持 v0.1.1；相关文档不再提及已撤回的 v0.1.2。
+
 ## v1.0.19 / 服务 v40
 
 - 重建公开 Git 历史，清理旧标签与 CI 日志；完整旧历史仅在维护者本机保留。
-- Magpie 社区纯过滤插件的近期修复统一为 v0.1.2，同步 GitHub 与社区 PR 的安装文件，保留全功能主线与社区纯过滤两条维护线。
+- Magpie 社区纯过滤插件保持市场 v0.1.1。曾计划的 v0.1.2（DeepSeek 工具 Schema 兼容）已撤回，该兼容只在本仓库完整工作台提供；插件仓库标签已与市场 v0.1.0、v0.1.1 对应。
 - README 增加常见 `response.failed` 流中断的实际兼容原因、修复原理、适用路径和边界；补齐参考项目链接。
 - 主线版本、标签、README 与发布包统一来自同一提交，不变更过滤与模型监测算法。
 

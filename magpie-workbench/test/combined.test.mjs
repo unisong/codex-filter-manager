@@ -159,6 +159,68 @@ test('resumed and Lite sessions repair opted-in historical declarations without 
     }
   }
 });
+test('candidates that are not opted-in DeepSeek stay byte-identical', async () => {
+  const {onProvider} = await load(combineMiddleware());
+  const fixture = JSON.parse(fs.readFileSync(new URL('./fixtures/automation-update-schema.json', import.meta.url), 'utf8'));
+  const request = {model: 'openai-demo/gpt-6-astra', input: [{role: 'user', content: 'hi'}], tools: [{
+    type: 'namespace', name: 'codex_app', tools: [{type: 'function', name: 'automation_update',
+      parameters: {oneOf: fixture.branches.map($ref => ({$ref})), $defs: fixture.$defs}}]}]};
+  const options = {providers: {'magpie:strict-deepseek': {deepSeekObjectRoot: true}}, aliases: {}};
+  const bytes = JSON.stringify(request);
+  for (const provider of [{id: 'openai-demo', model: 'gpt-6-astra'}, {id: 'strict-deepseek', model: 'gpt-6-astra'},
+    {id: 'openai-demo', model: 'deepseek-v4.1-flash'}]) {
+    assert.equal(onProvider(request, {provider, options}), undefined, JSON.stringify(provider));
+    assert.equal(JSON.stringify(request), bytes, JSON.stringify(provider));
+  }
+});
+test('Codex automation_update folds to an object that every original call shape satisfies', async () => {
+  const {onProvider} = await load(combineMiddleware());
+  const fixture = JSON.parse(fs.readFileSync(new URL('./fixtures/automation-update-schema.json', import.meta.url), 'utf8'));
+  const defs = fixture.$defs;
+  const leaves = schema => schema.$ref ? leaves(defs[schema.$ref.split('/').pop()])
+    : schema.oneOf ? schema.oneOf.flatMap(leaves) : [schema];
+  const shapes = fixture.branches.flatMap($ref => leaves({$ref}));
+  assert.equal(shapes.length, 6);
+  for (const union of ['oneOf', 'anyOf']) {
+    const request = {model: 'strict-deepseek/deepseek-v4.1-flash', tools: [{type: 'namespace', name: 'codex_app', tools: [{
+      type: 'function', name: 'automation_update', parameters: {[union]: fixture.branches.map($ref => ({$ref})), $defs: structuredClone(defs)}}]}]};
+    const out = onProvider(request, {provider: {id: 'strict-deepseek', model: 'deepseek-v4.1-flash'},
+      options: {providers: {'magpie:strict-deepseek': {deepSeekObjectRoot: true}}, aliases: {}}});
+    const folded = out.tools[0].tools[0].parameters;
+    assert.equal(folded.type, 'object');
+    assert.equal(folded[union], undefined);
+    assert.deepEqual(folded.$defs, defs, 'shared definitions stay intact');
+    assert.deepEqual(Object.keys(folded.properties).sort(), [...new Set(shapes.flatMap(s => Object.keys(s.properties)))].sort());
+    assert.deepEqual(folded.required, ['mode']);
+    for (const shape of shapes) assert.ok(folded.required.every(name => shape.required.includes(name)), union);
+  }
+});
+test('union folding only relaxes: unresolved or unknown branches require nothing', async () => {
+  const {onProvider} = await load(combineMiddleware());
+  const fold = parameters => {
+    const request = {model: 'd/deepseek-chat', tools: [{type: 'function', name: 'automation_update', parameters}]};
+    onProvider(request, {provider: {id: 'd', model: 'deepseek-chat'}, options: {providers: {'magpie:d': {deepSeekObjectRoot: true}}}});
+    return request.tools[0].parameters;
+  };
+  const view = {type: 'object', properties: {mode: {const: 'view'}, id: {type: 'string'}}, required: ['mode', 'id']};
+  for (const other of [{$ref: '#/$defs/missing'}, {$ref: 'https://example.com/schema.json'}, true, {}, {type: ['object', 'null']}]) {
+    const folded = fold({oneOf: [structuredClone(view), other], $defs: {}});
+    assert.equal(folded.type, 'object', JSON.stringify(other));
+    assert.equal(folded.oneOf, undefined);
+    assert.equal(folded.required, undefined, 'a branch of unknown shape must not inherit required fields: ' + JSON.stringify(other));
+    assert.deepEqual(Object.keys(folded.properties).sort(), ['id', 'mode']);
+  }
+  for (const never of [false, {type: 'null'}, {type: 'string'}]) {
+    assert.deepEqual(fold({anyOf: [structuredClone(view), never]}).required, ['mode', 'id'],
+      'a branch that cannot be an object does not relax the object branches: ' + JSON.stringify(never));
+  }
+  // allOf members are conjuncts: an unresolvable one is dropped (a relaxation), resolvable ones still apply.
+  const folded = fold({allOf: [{$ref: '#/$defs/missing'}, {properties: {x: {type: 'string'}}, required: ['x']}],
+    anyOf: [{type: 'object', properties: {y: {type: 'string'}}, required: ['y']}]});
+  assert.equal(folded.allOf, undefined);
+  assert.deepEqual(folded.required, ['x', 'y']);
+  assert.deepEqual(Object.keys(folded.properties).sort(), ['x', 'y']);
+});
 test('console edits only its filter switches, preserves other plugins/private options, detects conflicts', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'workbench-options-'));
   const packageRoot = path.join(root, 'package'), file = path.join(root, 'plugins.json');

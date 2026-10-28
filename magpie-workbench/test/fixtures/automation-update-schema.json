@@ -1,0 +1,34 @@
+{
+  "note": "Structure of the $defs in Codex's own automation_update declaration (no descriptions). The root union of its four request shapes is reconstructed; the test runs it as both oneOf and anyOf.",
+  "branches": ["#/$defs/__schema0", "#/$defs/__schema3", "#/$defs/__schema21", "#/$defs/__schema24"],
+  "$defs": {
+    "__schema0": {"additionalProperties": false, "properties": {"id": {"$ref": "#/$defs/__schema1"}, "mode": {"enum": ["view"], "type": "string"}}, "required": ["mode", "id"], "type": "object"},
+    "__schema1": {"$ref": "#/$defs/__schema2"},
+    "__schema10": {"anyOf": [{"enum": ["failed_runs_only"], "type": "string"}, {"type": "null"}]},
+    "__schema11": {"enum": ["cron"], "type": "string"},
+    "__schema12": {"anyOf": [{"$ref": "#/$defs/__schema13"}, {"type": "null"}]},
+    "__schema13": {"type": "string"},
+    "__schema14": {"$ref": "#/$defs/__schema2"},
+    "__schema15": {"enum": ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"], "type": "string"},
+    "__schema16": {"enum": ["create", "suggested_create"], "type": "string"},
+    "__schema17": {"additionalProperties": false, "properties": {"destination": {"$ref": "#/$defs/__schema19"}, "kind": {"$ref": "#/$defs/__schema18"}, "mode": {"$ref": "#/$defs/__schema16"}, "name": {"$ref": "#/$defs/__schema5"}, "notificationPolicy": {"$ref": "#/$defs/__schema9"}, "prompt": {"$ref": "#/$defs/__schema6"}, "rrule": {"$ref": "#/$defs/__schema7"}, "status": {"$ref": "#/$defs/__schema8"}, "targetThreadId": {"$ref": "#/$defs/__schema20"}}, "required": ["name", "prompt", "rrule", "status", "kind", "mode"], "type": "object"},
+    "__schema18": {"enum": ["heartbeat"], "type": "string"},
+    "__schema19": {"enum": ["local", "thread"], "type": "string"},
+    "__schema2": {"type": "string"},
+    "__schema20": {"$ref": "#/$defs/__schema2", "type": "string"},
+    "__schema21": {"oneOf": [
+      {"additionalProperties": false, "properties": {"destination": {"enum": ["local", "worktree"], "type": "string"}, "executionEnvironment": {"enum": ["worktree", "local"], "type": "string"}, "id": {"$ref": "#/$defs/__schema1"}, "kind": {"$ref": "#/$defs/__schema11"}, "localEnvironmentConfigPath": {"anyOf": [{"type": "string"}, {"type": "null"}]}, "mode": {"$ref": "#/$defs/__schema23"}, "model": {"$ref": "#/$defs/__schema14"}, "name": {"$ref": "#/$defs/__schema5"}, "notificationPolicy": {"$ref": "#/$defs/__schema9"}, "projectId": {"$ref": "#/$defs/__schema12"}, "prompt": {"$ref": "#/$defs/__schema6"}, "reasoningEffort": {"$ref": "#/$defs/__schema15"}, "rrule": {"$ref": "#/$defs/__schema22"}, "status": {"$ref": "#/$defs/__schema8"}}, "required": ["name", "prompt", "rrule", "status", "kind", "projectId", "model", "reasoningEffort", "mode", "id", "executionEnvironment"], "type": "object"},
+      {"additionalProperties": false, "properties": {"destination": {"$ref": "#/$defs/__schema19"}, "id": {"$ref": "#/$defs/__schema1"}, "kind": {"$ref": "#/$defs/__schema18"}, "mode": {"$ref": "#/$defs/__schema23"}, "name": {"$ref": "#/$defs/__schema5"}, "notificationPolicy": {"$ref": "#/$defs/__schema9"}, "prompt": {"$ref": "#/$defs/__schema6"}, "rrule": {"$ref": "#/$defs/__schema22"}, "status": {"$ref": "#/$defs/__schema8"}, "targetThreadId": {"$ref": "#/$defs/__schema20"}}, "required": ["name", "prompt", "rrule", "status", "kind", "mode", "id"], "type": "object"}
+    ]},
+    "__schema22": {"$ref": "#/$defs/__schema2"},
+    "__schema23": {"enum": ["update", "suggested_update"], "type": "string"},
+    "__schema24": {"additionalProperties": false, "properties": {"id": {"$ref": "#/$defs/__schema1"}, "mode": {"enum": ["delete"], "type": "string"}}, "required": ["mode", "id"], "type": "object"},
+    "__schema3": {"oneOf": [{"$ref": "#/$defs/__schema4"}, {"$ref": "#/$defs/__schema17"}]},
+    "__schema4": {"additionalProperties": false, "properties": {"destination": {"enum": ["local"], "type": "string"}, "executionEnvironment": {"enum": ["local"], "type": "string"}, "kind": {"$ref": "#/$defs/__schema11"}, "mode": {"$ref": "#/$defs/__schema16"}, "model": {"$ref": "#/$defs/__schema14"}, "name": {"$ref": "#/$defs/__schema5"}, "notificationPolicy": {"$ref": "#/$defs/__schema9"}, "projectId": {"$ref": "#/$defs/__schema12"}, "prompt": {"$ref": "#/$defs/__schema6"}, "reasoningEffort": {"$ref": "#/$defs/__schema15"}, "rrule": {"$ref": "#/$defs/__schema7"}, "status": {"$ref": "#/$defs/__schema8"}}, "required": ["name", "prompt", "rrule", "status", "kind", "projectId", "model", "reasoningEffort", "mode", "executionEnvironment"], "type": "object"},
+    "__schema5": {"$ref": "#/$defs/__schema2"},
+    "__schema6": {"$ref": "#/$defs/__schema2"},
+    "__schema7": {"$ref": "#/$defs/__schema2"},
+    "__schema8": {"enum": ["ACTIVE", "PAUSED"], "type": "string"},
+    "__schema9": {"$ref": "#/$defs/__schema10"}
+  }
+}

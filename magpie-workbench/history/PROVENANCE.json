@@ -1,10 +1,10 @@
 {
   "source": "https://github.com/unisong/magpie-codex-history-filter",
-  "version": "0.1.2-local",
+  "version": "0.1.1-local",
   "sha256": "47ce958cd425dc7d1e6dd48a318aade53aa08f72774ed399bf7c98f4cb486e9a",
   "changes": [
     "History hook copied from the reviewed baseline (originally inlined from Codex Filter Manager v1.0.5 magpie-plugin/history-filter.mjs and history.middleware.js). Combined entry renames its exported function only. Native settings page retains the official Magpie options bridge.",
-    "v0.1.2-local adds copy-on-write traversal for protocol ciphertext nested at any depth, with pooled-upstream regression coverage adapted from the reviewed upstream fix listed in THIRD_PARTY_NOTICES.md (commit cf33739).",
+    "0.1.1-local is local to this repository and not a community release: copy-on-write traversal for protocol ciphertext nested at any depth, with pooled-upstream regression coverage adapted from the reviewed upstream fix listed in THIRD_PARTY_NOTICES.md (commit cf33739).",
     "Codex Filter Manager v1.0.18 reworded one code comment so that it names no provider. Behavior is unchanged."
   ]
 }

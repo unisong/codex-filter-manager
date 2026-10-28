@@ -45,9 +45,19 @@ function appendDistinct(values,value){
  const key=JSON.stringify(value);
  if(!values.some(existing=>JSON.stringify(existing)===key))values.push(value);
 }
+// A union branch is skipped only when it provably cannot describe an object.
+function excludesObject(branch){
+ if(branch===false)return true;
+ if(!schemaMap(branch)||!Object.hasOwn(branch,'type'))return false;
+ const types=Array.isArray(branch.type)?branch.type:[branch.type];
+ return !types.includes('object');
+}
 // DeepSeek's strict Chat tool validator requires an object at the schema root.
 // Codex's automation_update is a union at the root; fold it the same way
 // Magpie's native Grok/Anthropic compatibility path does.
+// The fold only relaxes: dropping an allOf member removes a conjunct, and the
+// root keeps just the fields every object branch requires. A branch whose $ref
+// cannot be resolved, or whose shape is unknown, therefore requires nothing.
 function objectRootIn(root,schema,depth){
  if(!schemaMap(schema))return false;
  if(schema.type==='object'&&!hasRootUnion(schema))return false;
@@ -67,16 +77,19 @@ function objectRootIn(root,schema,depth){
  }
  delete schema.allOf;
  const branches=[];
+ let unknownBranch=false;
  for(const key of ['anyOf','oneOf']){
   if(!Array.isArray(schema[key]))continue;
   for(const raw of schema[key]){
    let branch=resolveSchemaRef(root,raw);
-   if(!schemaMap(branch))continue;
+   if(excludesObject(branch))continue;
+   if(!schemaMap(branch)){unknownBranch=true;continue}
    if(hasRootUnion(branch)&&depth<8){
     branch=JSON.parse(JSON.stringify(branch));
     objectRootIn(root,branch,depth+1);
    }
-   if(branch.type!=='object'&&!Object.hasOwn(branch,'properties'))continue;
+   if(excludesObject(branch))continue;
+   if(branch.type!=='object'&&!Object.hasOwn(branch,'properties')){unknownBranch=true;continue}
    branches.push(branch);
   }
   delete schema[key];
@@ -94,6 +107,7 @@ function objectRootIn(root,schema,depth){
   const branchRequired=Array.isArray(branch.required)?branch.required:[];
   common=common===null?[...branchRequired]:common.filter(name=>branchRequired.includes(name));
  }
+ if(unknownBranch)common=[];
  for(const [key,variants] of from){
   props[key]=variants.length===1?variants[0]:{anyOf:variants};
  }
