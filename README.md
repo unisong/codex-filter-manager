@@ -4,14 +4,14 @@
 
 **Windows 10 / 11 · 无需管理员权限 · 首次启动自动准备 Node.js · MIT**
 
-当前版本：**v1.0.19 / 服务 v40**。[下载最新版](https://github.com/unisong/codex-filter-manager/releases/latest) · [更新记录](docs/CHANGELOG.md) · [问题反馈](https://github.com/unisong/codex-filter-manager/issues)
+当前版本：**v1.0.20 / 服务 v40**。[下载最新版](https://github.com/unisong/codex-filter-manager/releases/latest) · [更新记录](docs/CHANGELOG.md) · [问题反馈](https://github.com/unisong/codex-filter-manager/issues)
 
 ## 两种版本
 
 | 版本 | 适用环境 | 包含内容 |
 | --- | --- | --- |
 | **全功能版**（本仓库） | CC Switch 或 Magpie | 历史过滤、可视化工作台、模型监测、记录与诊断 |
-| **社区纯过滤插件** | Magpie 社区插件市场 | 仅历史过滤中间件（v0.1.1），无工作台 UI、模型检测或 DeepSeek 协议转码兼容 |
+| **社区纯过滤插件** | Magpie 社区插件市场 | 仅历史过滤中间件，无工作台 UI、模型检测或 DeepSeek 协议转码兼容 |
 
 全功能版在两种网关下的接入方式不同：
 
