@@ -221,6 +221,68 @@ test('union folding only relaxes: unresolved or unknown branches require nothing
   assert.deepEqual(folded.required, ['x', 'y']);
   assert.deepEqual(Object.keys(folded.properties).sort(), ['x', 'y']);
 });
+const groupHistory = model => ({model, include: ['reasoning.encrypted_content'], input: [
+  {type: 'reasoning', id: 'rs_old', encrypted_content: 'OLD', summary: []},
+  {type: 'message', id: 'msg_old', role: 'assistant', content: [{type: 'output_text', text: 'KEEP'}]},
+  {type: 'function_call', id: 'fc_old', call_id: 'pair', name: 'shell', arguments: '{}'},
+  {type: 'function_call_output', id: 'fco_old', call_id: 'pair', output: 'KEEP_RESULT'},
+  {type: 'web_search_call', id: 'ws_old', status: 'completed', action: {type: 'search', query: 'q'}},
+  {role: 'user', content: 'next'},
+]});
+test('group and fallback tries apply each candidate provider\'s own history rule', async () => {
+  const {onRequest, onProvider} = await load(combineMiddleware());
+  const options = {providers: {
+    'magpie:relay-a': {historyFilter: true, preserveEncryptedInclude: true},
+    'magpie:relay-b': {historyFilter: true},
+    'magpie:relay-off': {historyFilter: false, preserveEncryptedInclude: true},
+  }, aliases: {'relay-old': 'relay-a'}};
+  const ctx = (extra = {}) => ({protocol: 'responses', path: '/v1/responses', options, state: {},
+    reject: () => assert.fail('a provider try cannot refuse a request'), ...extra});
+  const group = groupHistory('group/sol-dedicated');
+  const before = structuredClone(group);
+  assert.equal(onRequest(group, ctx()), undefined, 'the group prefix has no rule of its own');
+  for (const [id, preserve] of [['relay-a', true], ['relay-b', false], ['relay-old', true]]) {
+    const direct = onRequest(groupHistory(id + '/gpt-6.1-sol'), ctx());
+    const sent = onProvider(group, ctx({provider: {id, name: id, model: 'gpt-6.1-sol'}}));
+    assert.deepEqual(sent, {...direct, model: group.model}, id + ' is sent what a direct request to it is');
+    assert.equal(sent.include.includes('reasoning.encrypted_content'), preserve, id);
+  }
+  for (const [label, extra] of [
+    ['no rule', {provider: {id: 'relay-none', model: 'gpt-6.1-sol'}}],
+    ['rule off', {provider: {id: 'relay-off', model: 'gpt-6.1-sol'}}],
+    ['chat protocol', {protocol: 'chat', provider: {id: 'relay-a', model: 'gpt-6.1-sol'}}],
+    ['compaction path', {path: '/v1/responses/compact', provider: {id: 'relay-a', model: 'gpt-6.1-sol'}}],
+  ]) assert.equal(onProvider(group, ctx(extra)), undefined, label);
+  const reference = {...groupHistory('group/sol-dedicated'), previous_response_id: 'resp_old'};
+  assert.equal(onProvider(reference, ctx({provider: {id: 'relay-a', model: 'gpt-6.1-sol'}})), undefined,
+    'history that cannot move is sent as it was; only the request hook can refuse it');
+  assert.deepEqual(group, before, 'the hooks never change the body they are given');
+});
+test('a request filtered by its own prefix is not filtered again on its provider try', async () => {
+  const {onRequest, onProvider} = await load(combineMiddleware());
+  const options = {providers: {'magpie:relay-a': {historyFilter: true, preserveEncryptedInclude: true}}, aliases: {}};
+  const state = {};
+  const ctx = {protocol: 'responses', path: '/v1/responses', options, state, reject: () => assert.fail('not refused')};
+  const filtered = onRequest(groupHistory('relay-a/gpt-6.1-sol'), ctx);
+  assert.equal(state.codexHistoryFiltered, true);
+  const provider = {id: 'relay-a', model: 'gpt-6.1-sol'};
+  assert.equal(onProvider(filtered, {...ctx, provider}), undefined);
+  assert.deepEqual(onProvider(structuredClone(filtered), {...ctx, state: {}, provider}), filtered,
+    'filtering again without the shared state changes nothing');
+});
+test('a DeepSeek candidate takes its history rule and the schema fold in one try', async () => {
+  const {onProvider} = await load(combineMiddleware());
+  const options = {providers: {'magpie:strict-deepseek': {historyFilter: true, preserveEncryptedInclude: true,
+    deepSeekObjectRoot: true}}, aliases: {}};
+  const request = {...groupHistory('group/deepseek-dedicated'), tools: [{type: 'function', name: 'automation_update',
+    parameters: {oneOf: [{type: 'object', properties: {mode: {type: 'string'}}, required: ['mode']}]}}]};
+  const sent = onProvider(request, {protocol: 'responses', path: '/v1/responses', options, state: {},
+    provider: {id: 'strict-deepseek', model: 'deepseek-v4.1-flash'}});
+  assert.equal(sent.input.some(item => item.type === 'reasoning' || item.type === 'web_search_call' || item.id), false);
+  assert.equal(sent.input.find(item => item.type === 'function_call').call_id, 'pair');
+  assert.equal(sent.tools[0].parameters.type, 'object');
+  assert.equal(sent.store, false);
+});
 test('console edits only its filter switches, preserves other plugins/private options, detects conflicts', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'workbench-options-'));
   const packageRoot = path.join(root, 'package'), file = path.join(root, 'plugins.json');

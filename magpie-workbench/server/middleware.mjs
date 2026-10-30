@@ -23,11 +23,33 @@ export function onRequest(body,ctx){
  if(rejected)return;
  const filtered=historyRequest(routed||body,scoped);
  if(rejected)return;
+ // A direct provider/model request is filtered here; its provider tries skip it.
+ if(filtered&&ctx?.state&&typeof ctx.state==='object')ctx.state.codexHistoryFiltered=true;
  if(filtered&&Array.isArray(filtered.input)){
   try{return {...filtered,input:filtered.input.map(item=>item?.type==='web_search_call'?portableWebSearch(item):item)}}
   catch{scoped.reject(409,'Codex history filter: web search history could not be safely converted to text.');return}
  }
  return filtered||routed;
+}
+// A group or fallback request names the group, not a provider, so the request
+// hook finds no rule. Each try on a provider applies that provider's own rule.
+function candidateHistory(body,ctx){
+ const provider=ctx?.provider;
+ if(ctx?.state?.codexHistoryFiltered===true||ctx?.protocol!=='responses')return;
+ if(!body||typeof body!=='object'||Array.isArray(body)||typeof provider?.id!=='string')return;
+ // Encrypted compaction can only be refused before routing; leave it as sent.
+ if(/\\/compact\\/?$/.test(ctx.path||''))return;
+ const aliases=ctx?.options?.aliases||{};
+ const rules=ctx?.options?.providers||{};
+ const id=Object.prototype.hasOwnProperty.call(aliases,provider.id)?aliases[provider.id]:provider.id;
+ if(!Object.prototype.hasOwnProperty.call(rules,'magpie:'+id))return;
+ const rule=rules['magpie:'+id];
+ if(rule?.historyFilter!==true)return;
+ let clean;
+ // onProvider can't refuse a request: history that can't move is sent as it was.
+ try{clean=filterResponsesRequest(body,{preserveEncryptedInclude:rule.preserveEncryptedInclude===true}).body}catch{return}
+ if(!Array.isArray(clean.input))return clean;
+ try{return {...clean,input:clean.input.map(item=>item?.type==='web_search_call'?portableWebSearch(item):item)}}catch{return}
 }
 function schemaMap(value){return !!value&&typeof value==='object'&&!Array.isArray(value)}
 function hasRootUnion(schema){return Object.hasOwn(schema,'anyOf')||Object.hasOwn(schema,'oneOf')||Object.hasOwn(schema,'allOf')}
@@ -122,6 +144,10 @@ function objectRootIn(root,schema,depth){
  return true;
 }
 export function onProvider(body,ctx){
+ const history=candidateHistory(body,ctx);
+ return deepSeekSchema(history||body,ctx)||history;
+}
+function deepSeekSchema(body,ctx){
  const provider=ctx?.provider;
  if(!body||typeof provider?.id!=='string')return;
  const model=(typeof provider.model==='string'?provider.model:body.model)||'';
