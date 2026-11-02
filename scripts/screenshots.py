@@ -11,6 +11,7 @@ from playwright.sync_api import sync_playwright, expect
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--settings-only', action='store_true', help='Generate only the compatibility settings screenshot')
+parser.add_argument('--view', choices=['providers', 'protection', 'history', 'settings'], help='Generate one page only')
 parser.add_argument('--theme', choices=['light', 'dark'], default='light', help='Appearance used for screenshots')
 parser.add_argument('--output', type=Path, help='Optional directory for review screenshots')
 args = parser.parse_args()
@@ -18,6 +19,10 @@ args = parser.parse_args()
 root = Path(__file__).resolve().parent.parent
 output = args.output or root / 'docs/images'
 output.mkdir(parents=True, exist_ok=True)
+
+def screenshot_path(name):
+    return str(output / (name + ('-dark' if args.theme == 'dark' else '') + '.png'))
+
 html = (root / 'web' / 'dashboard.html').read_text(encoding='utf-8').replace('__FILTER_TOKEN_JSON__', '"demo-only"')
 version = int(re.search(r'FILTER_VERSION\s*=\s*(\d+)', (root / 'src' / 'proxy.cjs').read_text(encoding='utf-8')).group(1))
 product_version = json.loads((root / 'package.json').read_text(encoding='utf-8'))['version']
@@ -29,7 +34,7 @@ providers = [
     {'id': 'demo-team', 'name': '团队网关', 'endpoint': 'https://team.example.com/v1', 'current': False, 'editable': True, 'source': 'default', 'rule': off},
     {'id': 'demo-local', 'name': '本地测试端点', 'endpoint': 'http://127.0.0.1:19000/v1', 'current': False, 'editable': True, 'source': 'default', 'rule': off},
 ]
-now = datetime(2026, 10, 16, 12, 0, tzinfo=timezone.utc)
+now = datetime(2026, 11, 1, 4, 0, tzinfo=timezone.utc)
 record = {'key': 'demo-key', 'providerId': 'demo-main', 'providerName': providers[0]['name'], 'model': 'gpt-6-astra', 'effort': 'high', 'status': 'passed', 'reason': '演示数据：行为指纹与请求模型相符；不代表质量保证。', 'checkedAt': now.isoformat(), 'expiresAt': (now + timedelta(minutes=30)).isoformat(), 'prediction': 'gpt-6-astra', 'score': .936, 'rounds': 1, 'cacheValid': True, 'sampleEvidence': [fixture_evidence['pass']]}
 history = [{**record, 'id': f'demo-history-{i}', 'source': 'manual' if i == 0 else 'automatic', 'checkedAt': (now - timedelta(minutes=30*i)).isoformat()} for i in range(24)]
 history[1].update(status='unverified', prediction='gpt-6-luna', score=.999, sampleEvidence=[fixture_evidence['different']], reason='演示数据：已完成轮次有明显模型差异，复核未完成；没有新增持久锁定。')
@@ -56,7 +61,8 @@ state['filter']['stats'] = {'filteredRequests': 0, 'removedEncryptedContentItems
 state['guard'].update(providers={}, records=[], currentRecords=[], history=[])
 with sync_playwright() as p:
     browser = p.chromium.launch(headless=True, **({'executable_path': os.environ['CHROME_PATH']} if os.environ.get('CHROME_PATH') else {}))
-    page = browser.new_page(viewport={'width': 1440, 'height': 1180}, timezone_id='Asia/Shanghai', device_scale_factor=1)
+    page = browser.new_page(viewport={'width': 1440, 'height': 1000}, timezone_id='Asia/Shanghai', device_scale_factor=1)
+    page.clock.set_fixed_time(now + timedelta(minutes=5))
     page.add_init_script("localStorage.setItem('codex-workbench-theme', " + json.dumps(args.theme) + ");")
     errors = []
     page.on('pageerror', lambda error: errors.append(str(error)))
@@ -84,7 +90,8 @@ with sync_playwright() as p:
     expect(page.locator('#current')).to_have_text(providers[0]['name'])
     expect(page.locator('.side-links a')).to_have_count(2)
     screenshots = []
-    for view in ([] if args.settings_only else ['providers', 'protection', 'history', 'settings']):
+    views = [] if args.settings_only else [args.view] if args.view else ['providers', 'protection', 'history', 'settings']
+    for view in views:
         if view == 'protection':
             state = configured_state
             page.locator('#refresh').click()
@@ -96,30 +103,32 @@ with sync_playwright() as p:
         expect(page.locator('#refresh')).to_have_attribute('aria-busy', 'false')
         page.locator('#toast').evaluate('(element) => { element.hidden = true; }')
         page.evaluate('window.scrollTo(0,0)')
-        page.screenshot(path=str(output / (view + '.png')), animations='disabled')
-        screenshots.append(view + '.png')
-        if view == 'protection':
+        page.screenshot(path=screenshot_path(view), animations='disabled')
+        screenshots.append(Path(screenshot_path(view)).name)
+        if view == 'protection' and not args.view:
             page.locator('#guardAdjust').click()
             expect(page.locator('#guardSelectionEditor')).to_have_js_property('open', True)
-            page.screenshot(path=str(output / 'monitor-settings.png'), animations='disabled', full_page=True)
-            screenshots.append('monitor-settings.png')
+            page.screenshot(path=screenshot_path('monitor-settings'), animations='disabled', full_page=True)
+            screenshots.append(Path(screenshot_path('monitor-settings')).name)
             page.locator('#guardAdjust').click()
-    state = deepcopy(configured_state)
-    state['guard'].update(providers={}, records=[], currentRecords=[], history=[])
-    settings_page = browser.new_page(viewport={'width': 1200, 'height': 1400}, timezone_id='Asia/Shanghai', device_scale_factor=2)
-    settings_page.add_init_script("localStorage.setItem('codex-workbench-theme', " + json.dumps(args.theme) + ");")
-    settings_page.on('pageerror', lambda error: errors.append(str(error)))
-    settings_page.route('**/*', route_request)
-    settings_page.goto('http://127.0.0.1:19999/__codex_filter__/ui')
-    expect(settings_page.locator('#guardEnabled')).to_have_attribute('aria-checked', 'false')
-    settings_page.locator('#providers tr').first.get_by_role('button', name='配置', exact=True).click()
-    expect(settings_page.locator('#drawer')).to_be_visible()
-    expect(settings_page.locator('#historyFilter')).to_be_checked()
-    expect(settings_page.locator('#preserveEncryptedInclude')).to_be_checked()
-    expect(settings_page.locator('#stripResponsesLiteHeader')).not_to_be_checked()
-    panel = settings_page.locator('.drawer-panel').bounding_box()
-    settings_page.screenshot(path=str(output / 'provider-settings.png'), clip=panel)
-    screenshots.append('provider-settings.png')
+    if args.settings_only or not args.view:
+        state = deepcopy(configured_state)
+        state['guard'].update(providers={}, records=[], currentRecords=[], history=[])
+        settings_page = browser.new_page(viewport={'width': 1200, 'height': 1400}, timezone_id='Asia/Shanghai', device_scale_factor=2)
+        settings_page.clock.set_fixed_time(now + timedelta(minutes=5))
+        settings_page.add_init_script("localStorage.setItem('codex-workbench-theme', " + json.dumps(args.theme) + ");")
+        settings_page.on('pageerror', lambda error: errors.append(str(error)))
+        settings_page.route('**/*', route_request)
+        settings_page.goto('http://127.0.0.1:19999/__codex_filter__/ui')
+        expect(settings_page.locator('#guardEnabled')).to_have_attribute('aria-checked', 'false')
+        settings_page.locator('#providers tr').first.get_by_role('button', name='配置', exact=True).click()
+        expect(settings_page.locator('#drawer')).to_be_visible()
+        expect(settings_page.locator('#historyFilter')).to_be_checked()
+        expect(settings_page.locator('#preserveEncryptedInclude')).to_be_checked()
+        expect(settings_page.locator('#stripResponsesLiteHeader')).not_to_be_checked()
+        panel = settings_page.locator('.drawer-panel').bounding_box()
+        settings_page.screenshot(path=screenshot_path('provider-settings'), clip=panel)
+        screenshots.append(Path(screenshot_path('provider-settings')).name)
     assert not errors, errors
     browser.close()
 print(json.dumps({'screenshots': screenshots, 'theme': args.theme, 'data': 'synthetic', 'modelRequests': 0}))

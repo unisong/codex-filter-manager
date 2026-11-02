@@ -2,19 +2,30 @@
 
 这是 [Codex Filter Manager](https://github.com/unisong/codex-filter-manager) 的全功能 Magpie 工作台源码，随主仓库维护，不再从社区纯过滤仓库发版。源码版本跟随主仓库版本；已安装副本可以暂时保留原版本，源码整理不会自动升级它。
 
-提供原生历史过滤设置页，以及在本机浏览器使用的模型指纹检测、定期观测、异常暂停、记录和诊断。需要支持 server 插件、gateway middleware 与插件页面的 Magpie，已在 0.1.1265 验证。运行使用 Magpie 自带 Bun，不要求另装 Node.js。
+提供原生历史过滤设置页，以及在本机浏览器使用的模型指纹检测、定期观测、异常暂停、记录和诊断。使用 Magpie 的 server 插件、gateway middleware 与插件页面能力，不限定 Magpie 版本号。运行使用 Magpie 自带 Bun，不要求另装 Node.js。
 
 ## 安装与使用
 
-将主仓库解压到准备长期使用的目录。在 Magpie 中添加本目录，或执行：
+推荐使用图形界面安装：
 
-```sh
-magpie plugin add /path/to/codex-filter-manager/magpie-workbench
+已安装社区纯过滤插件或另一份工作台时，先备份原 Options 并停用旧插件，再加载新目录，只启用一份。
+
+1. 下载并完整解压主仓库的发布包，放在准备长期使用的可写目录。
+2. 打开 Magpie **插件 → 发现**，点击右下角、安装按钮左侧的**文件夹图标「从本地加载」**。
+3. 选择解压目录里的 **`magpie-workbench` 文件夹**并确认。这里是插件目录，里面有 `package.json`、`Open.bat`、`plugin/`、`web/`；不要选项目根目录或单独的脚本文件。
+4. 在 **插件 → 已安装** 中确认工作台已启用且无加载错误。打开 Magpie 导航中的 **Codex Workbench · 历史过滤**，设置供应商开关后点击 **保存更改**。
+
+如果习惯命令行，可以在 **PowerShell 或终端**执行下列命令，把双引号内的路径换成实际插件目录：
+
+```powershell
+magpie plugin add "D:\Tools\CodexFilter\magpie-workbench"
 ```
 
-先备份原 Options，再停用原历史过滤或工作台插件；只启用一份。新安装不预置供应商规则，也不自动添加检测目标。不修改 Codex 的 `base_url`，不要移动正在被 Magpie 引用的目录。
+不要把整条命令粘进 Magpie 的插件输入框；它不是终端。路径有空格也要保留双引号。如果终端找不到 `magpie` 命令，直接用「从本地加载」，无需先配置命令行环境。
 
-只需要过滤时，在 Magpie 的 **Codex Workbench · 历史过滤** 页面设置，在插件页检查启用状态、调用和错误；无需登录或打开本机工作台。需要模型监测时，Windows 双击 `Open.bat`，其他系统使用 Magpie 的本机控制台入口。该入口仅打开本机页面，不提供推理模型。
+新安装不预置供应商规则，也不自动添加检测目标。不修改 Codex 的 `base_url`，不要移动正在被 Magpie 引用的目录。
+
+只需要过滤时，在 Magpie 的 **Codex Workbench · 历史过滤** 页面设置，在插件页检查启用状态、调用和错误；无需登录或打开本机工作台。需要模型监测时，Windows 双击本目录的 `Open.bat`，其他系统使用 Magpie 的本机控制台入口。该入口仅打开已加载插件的本机页面，不负责安装插件，也不提供推理模型；主仓库根目录的 `Start.bat` 只用于 CC Switch。
 
 **DeepSeek Schema** 是针对 DeepSeek 的协议转码兼容。实际上游为 DeepSeek、且拒绝 `automation_update` 的工具 Schema 根联合类型时，仅为该供应商开启。该选项独立于历史过滤，所有供应商默认关闭，并覆盖续聊历史中的 `tool_search_output` 与 `additional_tools`。
 

@@ -99,6 +99,18 @@ python .\tests\update-install-check.py
 
 这些脚本使用模拟供应商数据，不应连接正式页面或读取真实凭据。`scripts/live-check.cjs` 与 `scripts/live-guard-check.cjs` 属于**明确手动执行的真实供应商检查**，可能调用模型并计费，不应放入 CI 或默认测试链。
 
+## 更新文档截图
+
+README 分别展示 Magpie 和 CC Switch 的实际页面。截图脚本直接渲染当前页面源码、拦截网络并使用虚构数据，不读取正式配置或调用模型；图片输出到 `docs/images/`，产品版本从项目配置读取：
+
+```powershell
+python scripts/screenshots.py
+python scripts/screenshots.py --theme dark --view protection
+python scripts/magpie-screenshots.py
+```
+
+第一条生成 CC Switch 浅色截图，第二条仅更新其深色模型监测图，第三条生成 Magpie 工作台与原生过滤页。需要预览而不覆盖文档图片时加 `--output .runtime/screenshots-review`；测试浏览器配置与前面的浏览器检查相同。界面变化后应重新生成对应图片、目视核对，并同步 README 中的说明；不要直接发布带真实供应商的本机截图。
+
 ## 修改要求
 
 - 不写入 CC Switch 数据库，不收集或输出 API Key，不把请求正文或项目内容写入日志。

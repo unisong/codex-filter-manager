@@ -4,7 +4,13 @@ Magpie 只提供两种选择：本仓库的完整工作台，或社区市场的�
 
 ## 全功能版
 
-加载本仓库的 `magpie-workbench/` 目录，详见 [安装说明](../magpie-workbench/README.md)。
+下载发布包并完整解压后，在 Magpie 的 **插件 → 发现** 页面点击右下角、安装按钮左侧的**文件夹图标「从本地加载」**，选择解压目录里的 **`magpie-workbench` 文件夹**。正确目录包含 `package.json` 和 `Open.bat`，不是项目最外层，也不是单个 `.js` 文件。加载后在 **插件 → 已安装** 中确认启用、无加载错误，再打开 **Codex Workbench · 历史过滤** 页面。已有旧插件时先备份 Options 并停用，只启用一份。
+
+命令行是可选方式，必须在 PowerShell 或终端运行；不要把 `magpie plugin add ...` 整条命令填进 Magpie 的插件输入框。完整步骤与带引号的 Windows 路径示例见 [安装说明](../magpie-workbench/README.md#安装与使用)。
+
+下面是直接嵌在 Magpie 中的历史过滤设置页，使用虚构供应商演示：
+
+![Magpie 原生设置页：历史过滤与 DeepSeek Schema 独立开关](images/magpie-native-filters.png)
 
 - 只需要历史过滤：在 Magpie 的 **Codex Workbench · 历史过滤** 原生页面按供应商设置，不需要打开工作台。
 - **DeepSeek Schema** 是针对 DeepSeek 的协议转码兼容：实际上游为 DeepSeek、且拒绝 `automation_update` 的工具 Schema 根联合类型时，仅为该供应商开启。该兼容同时检查续聊历史里的 `tool_search_output` 与 `additional_tools`，不改变其他供应商或工具结果。所有供应商默认关闭。
@@ -18,7 +24,7 @@ Magpie 只提供两种选择：本仓库的完整工作台，或社区市场的�
 
 ## 社区纯过滤插件
 
-在 Magpie 自带的社区插件市场 **Plugins → Discover → Gateway middleware** 搜索 **Codex History Filter** 安装，或运行：
+在 Magpie 自带的社区插件市场 **插件 → 发现（Plugins → Discover）** 搜索 **Codex History Filter** 安装，或在 **PowerShell / 终端**运行：
 
 ```sh
 magpie plugin add @magpie-community/middleware-codex-history

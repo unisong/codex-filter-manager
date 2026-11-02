@@ -18,7 +18,7 @@
 - **CC Switch**：本仓库的代理服务接管 Codex 路由，界面开关直接对应供应商规则。
 - **Magpie**：加载本仓库的 [`magpie-workbench/`](magpie-workbench/README.md) 插件，Codex 继续直连 Magpie，本工具不修改 `base_url`。
 
-只需过滤的 Magpie 用户可以在 **Plugins → Discover → Gateway middleware** 搜索 **Codex History Filter** 安装社区版，或执行：
+只需过滤的 Magpie 用户可以在 **插件 → 发现（Plugins → Discover）** 搜索 **Codex History Filter** 安装社区版；也可以在 **PowerShell 或终端**执行：
 
 ```sh
 magpie plugin add @magpie-community/middleware-codex-history
@@ -46,13 +46,32 @@ Codex → 本机过滤服务 → CC Switch → 当前供应商
 
 ## Magpie 快速开始
 
-将本仓库解压到固定目录，然后在 Magpie 中加载：
+**推荐直接在 Magpie 中点击安装，无需输入命令。**
 
-```sh
-magpie plugin add /path/to/codex-filter-manager/magpie-workbench
+如果已经启用了社区纯过滤插件或另一份工作台，先备份其 Options 并停用旧插件，再安装新目录，只启用一份。
+
+1. 从 [Releases](https://github.com/unisong/codex-filter-manager/releases/latest) 下载 ZIP，完整解压到准备长期使用的目录。
+2. 打开 Magpie 的 **插件 → 发现**，点击页面右下角的**文件夹图标「从本地加载」**（在「安装」按钮左侧）。
+3. 在文件夹选择窗口中，进入解压后的项目，选中里面的 **`magpie-workbench` 文件夹**并确认。不要选项目最外层，也不要选某个 `.js` 文件；正确文件夹里能看到 `package.json`、`Open.bat`、`plugin/` 和 `web/`。
+4. 在 **插件 → 已安装** 确认工作台插件已启用、没有加载错误。
+5. 打开 Magpie 导航中的 **Codex Workbench · 历史过滤**，按需开启供应商规则并点击 **保存更改**。新安装默认全部关闭；安装和保存规则都不修改 Codex 的 `base_url`。
+
+只需要历史过滤时，到这里就可以使用，不需要打开本地工作台。需要模型监测、检测记录或诊断时，再双击 **`magpie-workbench\Open.bat`**；它负责打开已加载插件的工作台，不是安装程序。根目录的 `Start.bat` 是 CC Switch 入口。
+
+<details>
+<summary>可选：使用 PowerShell 命令安装</summary>
+
+假设插件文件夹的完整路径是 `D:\Tools\CodexFilter\magpie-workbench`，在 **PowerShell 或 Windows 终端**执行下面的命令，并把引号里的路径换成自己的实际路径：
+
+```powershell
+magpie plugin add "D:\Tools\CodexFilter\magpie-workbench"
 ```
 
-只使用历史过滤时，不必打开工作台，直接在 Magpie 侧边栏的 **Codex Workbench · 历史过滤** 原生页面设置；在 Magpie 扩展／插件页面确认插件已启用、无调用错误。每个供应商都有独立的 **DeepSeek Schema** 开关，用于针对 DeepSeek 的协议转码兼容：只在严格 DeepSeek 上游拒绝 `automation_update` 的根联合类型时开启。续聊中的 `tool_search_output` 与 `additional_tools` 也会同步修复。该开关默认关闭。需要模型监测时，再运行 `magpie-workbench/Open.bat` 打开本地工作台。
+路径有空格时也要保留双引号。**不要把整条命令粘进 Magpie 页面底部的插件输入框**；那里不是终端。终端提示找不到 `magpie` 命令时，直接使用上面的「从本地加载」即可。旧说明里的 `/path/to/...` 只是路径占位示例，不能原样执行。
+
+</details>
+
+每个供应商都有独立的 **DeepSeek Schema** 开关，用于针对 DeepSeek 的协议转码兼容：只在严格 DeepSeek 上游拒绝 `automation_update` 的根联合类型时开启。续聊中的 `tool_search_output` 与 `additional_tools` 也会同步修复。该开关默认关闭。
 
 详细安装、升级、数据位置与边界见 [Magpie 使用方式](docs/MAGPIE.md)。
 
@@ -72,19 +91,34 @@ magpie plugin add /path/to/codex-filter-manager/magpie-workbench
 
 ## 界面
 
-界面按 **当前状态 → 主操作 → 配置列表 → 技术说明** 排列。Magpie 工作台每次打开默认进入首栏「历史过滤」，模型监测需主动切换。左上角显示运行状态、版本和项目链接；右上角提供明暗切换、当前页面刷新和关闭入口。
+两种接入共用视觉风格，按 **历史过滤、模型监测、检测记录、设置与诊断** 导航；Magpie 工作台每次打开默认进入「历史过滤」。右上角提供明暗切换、当前页面刷新和关闭入口。以下截图由当前页面源码生成，使用虚构供应商与演示记录；图中开启的规则和监测目标不是安装默认值。
 
-![历史过滤](docs/images/providers.png)
+**Magpie 全功能工作台 · 历史过滤（深色）**
+
+![Magpie 工作台：供应商过滤开关与独立的 DeepSeek Schema 兼容](docs/images/magpie-filters.png)
 
 <details>
-<summary>查看模型监测、检测记录和供应商设置</summary>
+<summary>查看 Magpie 的模型监测、设置和检测记录</summary>
 
-![模型监测](docs/images/protection.png)
-![同页调整监测](docs/images/monitor-settings.png)
-![检测记录](docs/images/history.png)
-![供应商设置](docs/images/provider-settings.png)
-![设置与诊断](docs/images/settings.png)
-![深色主题](docs/images/protection-dark.png)
+![Magpie 工作台：当前模型与检测状态](docs/images/magpie-monitor.png)
+![Magpie 工作台：同页调整监测](docs/images/magpie-monitor-settings.png)
+![Magpie 工作台：历次检测记录](docs/images/magpie-history.png)
+![Magpie 工作台：设置与诊断](docs/images/magpie-settings.png)
+
+</details>
+
+仅使用过滤时的 Magpie 原生设置页见 [Magpie 使用方式](docs/MAGPIE.md#全功能版)。
+
+<details>
+<summary>查看 CC Switch 管理界面</summary>
+
+![CC Switch：历史过滤](docs/images/providers.png)
+![CC Switch：模型监测](docs/images/protection.png)
+![CC Switch：同页调整监测](docs/images/monitor-settings.png)
+![CC Switch：检测记录](docs/images/history.png)
+![CC Switch：供应商设置](docs/images/provider-settings.png)
+![CC Switch：设置与诊断](docs/images/settings.png)
+![CC Switch：深色主题](docs/images/protection-dark.png)
 
 </details>
 
